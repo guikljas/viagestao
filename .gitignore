@@ -1,0 +1,8 @@
+.env
+.vercel
+__pycache__/
+*.pyc
+uploads/
+relatorios/
+despesas.db
+migrar_para_neon.local.log

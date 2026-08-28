@@ -1,0 +1,7 @@
+streamlit==1.59.2
+Flask==3.1.3
+waitress==3.0.2
+psycopg[binary]==3.2.10
+openpyxl==3.1.5
+pandas==2.3.3
+pyarrow==24.0.0
