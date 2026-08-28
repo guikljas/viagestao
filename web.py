@@ -6,6 +6,7 @@ from flask import Flask, flash, redirect, render_template, request, session, url
 import database as db
 from relatorio import gerar_relatorio
 from utils import fmt_placa
+from analise import analisar_consumo_mes, analisar_mes, analisar_viagem
 
 app = Flask(__name__, static_folder="public", static_url_path="/static")
 app.config.update(SECRET_KEY=os.environ.get("VIAGESTAO_SECRET", "desenvolvimento-local-altere-em-producao"), MAX_CONTENT_LENGTH=10 * 1024 * 1024)
@@ -25,6 +26,14 @@ def context():
     if not db.usuario_tem_empresa(session["user_id"],empresa_id): empresa_id=empresas[0]["id"]
     session["empresa_id"]=empresa_id
     return empresas,empresa_id,next(e for e in empresas if e["id"]==empresa_id)
+
+def numero(valor, padrao=0.0):
+    """Aceita números digitados no padrão brasileiro sem perder a validação."""
+    texto=(valor or "").strip().replace(".", "").replace(",", ".")
+    return float(texto) if texto else padrao
+
+def viagens_da_empresa(empresa_id):
+    return db.listar_viagens(empresa_id)
 
 @app.route("/login",methods=["GET","POST"])
 def login():
@@ -56,11 +65,27 @@ def viagens():
     empresas,eid,empresa=context(); motoristas=db.listar_motoristas(eid);veiculos=db.listar_veiculos(eid)
     if request.method=="POST":
         try:
-            ident=db.criar_viagem(empresa_id=eid,motorista_id=int(request.form["motorista"]),veiculo_id=int(request.form["veiculo"]),data_inicio=request.form["data_inicio"],data_fim=None,origem=request.form["origem"],destino=request.form["destino"],motivo=request.form.get("motivo"),cliente_atividade=request.form.get("cliente"),hodometro_inicio=float(request.form.get("km",0)),hodometro_fim=None,media_computador_bordo=None,observacoes=request.form.get("observacoes"),status="Planejada")
+            ident=db.criar_viagem(empresa_id=eid,motorista_id=int(request.form["motorista"]),veiculo_id=int(request.form["veiculo"]),data_inicio=request.form["data_inicio"],data_fim=None,origem=request.form["origem"],destino=request.form["destino"],motivo=request.form.get("motivo"),cliente_atividade=request.form.get("cliente"),hodometro_inicio=numero(request.form.get("km")),hodometro_fim=None,media_computador_bordo=None,valor_adiantamento=numero(request.form.get("adiantamento")),observacoes=request.form.get("observacoes"),status="Em andamento")
             db.auditar(session["user_id"],eid,"Criação","Viagem",ident);flash("Viagem registrada com sucesso.","success")
         except (ValueError,KeyError): flash("Confira os dados obrigatórios da viagem.","error")
         return redirect(url_for("viagens"))
-    return render_template("viagens.html",empresas=empresas,empresa=empresa,viagens=db.listar_viagens(eid),motoristas=motoristas,veiculos=veiculos)
+    return render_template("viagens.html",empresas=empresas,empresa=empresa,viagens=viagens_da_empresa(eid),motoristas=motoristas,veiculos=veiculos,hoje=date.today().isoformat())
+
+@app.route("/atualizar-viagem", methods=["GET", "POST"])
+@login_required
+def atualizar_viagem():
+    empresas,eid,empresa=context(); viagens=viagens_da_empresa(eid)
+    escolhida=next((x for x in viagens if x["id"]==request.args.get("viagem",type=int)), viagens[0] if viagens else None)
+    if request.method=="POST":
+        try:
+            viagem_id=int(request.form["viagem"])
+            if not any(x["id"]==viagem_id for x in viagens): raise ValueError
+            db.atualizar_viagem(viagem_id, data_fim=request.form["data_fim"], hodometro_fim=numero(request.form.get("km_final")), media_computador_bordo=numero(request.form.get("media"),None), valor_devolvido=numero(request.form.get("devolvido")), status=request.form["status"], observacoes=request.form.get("observacoes"))
+            db.auditar(session["user_id"],eid,"Atualização","Viagem",viagem_id); flash("Viagem atualizada.","success")
+        except (ValueError,KeyError): flash("Confira os dados de fechamento.","error")
+        return redirect(url_for("atualizar_viagem"))
+    analise=analisar_viagem(escolhida,db.listar_despesas(escolhida["id"]),db.listar_cargas(escolhida["id"])) if escolhida else None
+    return render_template("atualizar_viagem.html",empresas=empresas,empresa=empresa,viagens=viagens,viagem=escolhida,analise=analise,hoje=date.today().isoformat())
 
 @app.route("/despesas",methods=["GET","POST"])
 @login_required
@@ -68,11 +93,13 @@ def despesas():
     empresas,eid,empresa=context(); viagens=db.listar_viagens(eid)
     if request.method=="POST":
         try:
-            ident=db.criar_despesa(viagem_id=int(request.form["viagem"]),categoria=request.form["categoria"],data=request.form["data"],valor=float(request.form["valor"]),descricao=request.form.get("descricao"),estabelecimento=request.form.get("estabelecimento"),forma_pagamento=request.form.get("forma"),quilometragem=None,criado_por=session["user_id"])
+            viagem_id=int(request.form["viagem"])
+            if not any(x["id"]==viagem_id for x in viagens): raise ValueError
+            ident=db.criar_despesa(viagem_id=viagem_id,categoria=request.form["categoria"],data=request.form["data"],valor=numero(request.form["valor"]),litros=numero(request.form.get("litros"),None),local_abastecimento=request.form.get("local"),descricao=request.form.get("descricao"),estabelecimento=request.form.get("estabelecimento"),forma_pagamento=request.form.get("forma"),quilometragem=numero(request.form.get("quilometragem"),None),criado_por=session["user_id"])
             db.auditar(session["user_id"],eid,"Criação","Despesa",ident);flash("Despesa enviada para aprovação.","success")
         except (ValueError,KeyError): flash("Confira os dados da despesa.","error")
         return redirect(url_for("despesas"))
-    return render_template("despesas.html",empresas=empresas,empresa=empresa,despesas=db.listar_despesas(empresa_id=eid),viagens=viagens,categorias=db.CATEGORIAS)
+    return render_template("despesas.html",empresas=empresas,empresa=empresa,despesas=db.listar_despesas(empresa_id=eid),viagens=viagens,categorias=["COMBUSTIVEL","PEDAGIO","REFEICAO","DIARIA","HOSPEDAGEM","ESTACIONAMENTO","MANUTENCAO","LAVAGEM","TRANSPORTE","OUTRAS"],hoje=date.today().isoformat())
 
 @app.post("/despesas/<int:despesa_id>/<acao>")
 @login_required
@@ -82,6 +109,62 @@ def acao_despesa(despesa_id,acao):
     elif acao=="aprovar": db.alterar_status_despesa(despesa_id,"Aprovada");db.auditar(session["user_id"],eid,"Aprovação","Despesa",despesa_id);flash("Despesa aprovada.","success")
     elif acao=="reprovar": db.alterar_status_despesa(despesa_id,"Reprovada",request.form.get("motivo"));db.auditar(session["user_id"],eid,"Reprovação","Despesa",despesa_id);flash("Despesa reprovada.","success")
     return redirect(url_for("despesas"))
+
+@app.post("/despesas/<int:despesa_id>/excluir")
+@login_required
+def excluir_despesa(despesa_id):
+    empresas,eid,empresa=context()
+    despesa=next((x for x in db.listar_despesas(empresa_id=eid) if x["id"]==despesa_id),None)
+    if not despesa: flash("Despesa não encontrada nesta empresa.","error")
+    elif session["perfil"] not in ("Administrador","Gestor","Financeiro") and despesa["criado_por"]!=session["user_id"]: flash("Você não pode excluir esta despesa.","error")
+    else: db.excluir_despesa(despesa_id); db.auditar(session["user_id"],eid,"Exclusão","Despesa",despesa_id); flash("Despesa excluída.","success")
+    return redirect(url_for("despesas"))
+
+@app.route("/cargas", methods=["GET", "POST"])
+@login_required
+def cargas():
+    empresas,eid,empresa=context(); viagens=viagens_da_empresa(eid)
+    viagem_id=request.args.get("viagem",type=int) or (viagens[0]["id"] if viagens else None)
+    if request.method=="POST":
+        try:
+            viagem_id=int(request.form["viagem"])
+            if not any(x["id"]==viagem_id for x in viagens): raise ValueError
+            ident=db.criar_carga(viagem_id=viagem_id,empresa_cliente=request.form["cliente"].strip(),tipo=request.form["tipo"],data=request.form["data"],valor=numero(request.form["valor"]),descricao=request.form.get("descricao"))
+            db.auditar(session["user_id"],eid,"Criação","Carga",ident); flash("Carga lançada.","success")
+        except (ValueError,KeyError): flash("Confira os dados da carga.","error")
+        return redirect(url_for("cargas",viagem=request.form.get("viagem")))
+    return render_template("cargas.html",empresas=empresas,empresa=empresa,viagens=viagens,viagem_id=viagem_id,cargas=db.listar_cargas(viagem_id),hoje=date.today().isoformat())
+
+@app.post("/cargas/<int:carga_id>/excluir")
+@login_required
+def excluir_carga(carga_id):
+    empresas,eid,empresa=context(); viagem_id=request.form.get("viagem",type=int)
+    if session["perfil"] not in ("Administrador","Gestor","Financeiro"): flash("Você não tem permissão para excluir cargas.","error")
+    else: db.excluir_carga(carga_id); db.auditar(session["user_id"],eid,"Exclusão","Carga",carga_id); flash("Carga excluída.","success")
+    return redirect(url_for("cargas",viagem=viagem_id))
+
+@app.get("/consultar-viagens")
+@login_required
+def consultar_viagens():
+    empresas,eid,empresa=context(); viagens=viagens_da_empresa(eid); viagem_id=request.args.get("viagem",type=int)
+    escolhida=next((x for x in viagens if x["id"]==viagem_id),None)
+    detalhes=None
+    if escolhida:
+        despesas=db.listar_despesas(escolhida["id"]); cargas_viagem=db.listar_cargas(escolhida["id"])
+        detalhes=analisar_viagem(escolhida,despesas,cargas_viagem)
+    return render_template("consultar_viagens.html",empresas=empresas,empresa=empresa,viagens=viagens,viagem=escolhida,despesas=despesas if escolhida else [],cargas=cargas_viagem if escolhida else [],detalhes=detalhes)
+
+@app.get("/relatorio-mensal")
+@login_required
+def relatorio_mensal():
+    empresas,eid,empresa=context(); hoje=date.today(); ano=request.args.get("ano",hoje.year,type=int); mes=request.args.get("mes",hoje.month,type=int); prefixo=f"{ano:04d}-{mes:02d}"
+    viagens=[v for v in viagens_da_empresa(eid) if str(v["data_inicio"]).startswith(prefixo)]
+    despesas=[d for d in db.listar_despesas(empresa_id=eid) if str(d["data"]).startswith(prefixo)]
+    cargas_mes=[]
+    for v in viagens: cargas_mes.extend([c for c in db.listar_cargas(v["id"]) if str(c["data"]).startswith(prefixo)])
+    dados=analisar_mes(despesas,cargas_mes)
+    consumo=analisar_consumo_mes([(v,db.listar_despesas(v["id"])) for v in viagens])
+    return render_template("relatorio_mensal.html",empresas=empresas,empresa=empresa,ano=ano,mes=mes,dados=dados,consumo=consumo,viagens=viagens)
 
 @app.route("/cadastros/<tipo>")
 @login_required

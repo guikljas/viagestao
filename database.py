@@ -128,6 +128,8 @@ def criar_veiculo(**d):
 def criar_viagem(**d):
  for k,v in {"motivo":None,"cliente_atividade":None,"status":"Planejada","valor_adiantamento":0,"valor_nf_ida":0,"valor_nf_retorno":0}.items():d.setdefault(k,v)
  return _insert_id("INSERT INTO viagens(empresa_id,motorista_id,veiculo_id,data_inicio,data_fim,origem,destino,motivo,cliente_atividade,hodometro_inicio,hodometro_fim,media_computador_bordo,valor_adiantamento,valor_nf_ida,valor_nf_retorno,status,observacoes) VALUES(:empresa_id,:motorista_id,:veiculo_id,:data_inicio,:data_fim,:origem,:destino,:motivo,:cliente_atividade,:hodometro_inicio,:hodometro_fim,:media_computador_bordo,:valor_adiantamento,:valor_nf_ida,:valor_nf_retorno,:status,:observacoes)",d)
+def atualizar_viagem(i,**d):
+ c=conectar();c.execute("UPDATE viagens SET data_fim=:data_fim,hodometro_fim=:hodometro_fim,media_computador_bordo=:media_computador_bordo,valor_devolvido=:valor_devolvido,status=:status,observacoes=:observacoes WHERE id=:id",dict(d,id=i));c.commit();c.close()
 def listar_viagens(e=None, empresa_id=None):
  e = empresa_id if empresa_id is not None else e
  q="SELECT v.*,em.nome empresa_nome,m.nome motorista_nome,m.codigo motorista_codigo,ve.placa veiculo_placa,ve.codigo veiculo_codigo FROM viagens v JOIN empresas em ON em.id=v.empresa_id JOIN motoristas m ON m.id=v.motorista_id JOIN veiculos ve ON ve.id=v.veiculo_id";return _rows(q+(" WHERE v.empresa_id=?" if e else "")+" ORDER BY v.data_inicio DESC",(e,) if e else ())
@@ -166,3 +168,9 @@ def excluir_usuario(i):
  c=conectar();c.execute("DELETE FROM usuario_empresas WHERE usuario_id=?",(i,));c.execute("DELETE FROM usuarios WHERE id=?",(i,));c.commit();c.close()
 def listar_cargas(viagem_id=None):
  return _rows("SELECT * FROM cargas"+(" WHERE viagem_id=?" if viagem_id else "")+" ORDER BY data",(viagem_id,) if viagem_id else ())
+def criar_carga(**d):
+ return _insert_id("INSERT INTO cargas(viagem_id,empresa_cliente,tipo,data,valor,descricao) VALUES(:viagem_id,:empresa_cliente,:tipo,:data,:valor,:descricao)",d)
+def excluir_carga(i):
+ c=conectar();c.execute("DELETE FROM cargas WHERE id=?",(i,));c.commit();c.close()
+def excluir_despesa(i):
+ c=conectar();c.execute("DELETE FROM despesas WHERE id=?",(i,));c.commit();c.close()
