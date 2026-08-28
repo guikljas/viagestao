@@ -173,8 +173,19 @@ def relatorio_mensal():
 @app.route("/cadastros/<tipo>")
 @login_required
 def cadastros(tipo):
+    if tipo not in ("motoristas","veiculos"): return redirect(url_for("dashboard"))
     empresas,eid,empresa=context(); dados=db.listar_motoristas(eid) if tipo=="motoristas" else db.listar_veiculos(eid)
-    return render_template("cadastros.html",empresas=empresas,empresa=empresa,tipo=tipo,dados=dados)
+    return render_template("cadastros.html",empresas=empresas,empresa=empresa,tipo=tipo,dados=dados,motoristas=db.listar_motoristas(eid))
+
+@app.get("/motoristas")
+@login_required
+def acesso_motoristas():
+    return redirect(url_for("cadastros",tipo="motoristas",empresa=request.args.get("empresa")))
+
+@app.get("/veiculos")
+@login_required
+def acesso_veiculos():
+    return redirect(url_for("cadastros",tipo="veiculos",empresa=request.args.get("empresa")))
 
 @app.post("/cadastros/<tipo>")
 @login_required
@@ -183,11 +194,11 @@ def cadastrar(tipo):
     if session["perfil"] != "Administrador": flash("Apenas administradores podem alterar cadastros.","error"); return redirect(url_for("cadastros",tipo=tipo))
     try:
         if tipo=="motoristas":
-            db.criar_motorista(nome=request.form["nome"],codigo=request.form.get("codigo"),cpf=request.form.get("cpf"),telefone=request.form.get("telefone"),email=request.form.get("email"),cnh=request.form.get("cnh"),categoria_cnh=None,validade_cnh=None,status="Ativo",observacoes=None,empresa_id=eid)
+            db.criar_motorista(nome=request.form["nome"],codigo=request.form.get("codigo"),cpf=request.form.get("cpf"),telefone=request.form.get("telefone"),email=request.form.get("email"),cnh=request.form.get("cnh"),categoria_cnh=request.form.get("categoria_cnh"),validade_cnh=request.form.get("validade_cnh") or None,status=request.form.get("status","Ativo"),observacoes=request.form.get("observacoes"),empresa_id=eid)
         elif tipo=="veiculos":
             placa="".join(c for c in request.form["placa"].upper() if c.isalnum())
             if len(placa)!=7: raise ValueError("Informe uma placa válida com 7 caracteres.")
-            db.criar_veiculo(placa=placa,codigo=request.form.get("codigo"),descricao=request.form.get("modelo"),marca=request.form.get("marca"),ano=None,tipo=request.form.get("tipo"),quilometragem=0,status="Ativo",motorista_id=None,empresa_id=eid)
+            db.criar_veiculo(placa=placa,codigo=request.form.get("codigo"),descricao=request.form.get("modelo"),marca=request.form.get("marca"),ano=int(request.form["ano"]) if request.form.get("ano") else None,tipo=request.form.get("tipo"),quilometragem=numero(request.form.get("quilometragem")),status=request.form.get("status","Ativo"),motorista_id=int(request.form["motorista_id"]) if request.form.get("motorista_id") else None,empresa_id=eid)
         else: raise ValueError("Cadastro inválido.")
         flash("Cadastro realizado com sucesso.","success")
     except (ValueError, KeyError) as e: flash(str(e) or "Confira os dados informados.","error")
@@ -217,16 +228,16 @@ def editar_cadastro(tipo,registro_id):
     if not registro: flash("Registro não encontrado nesta empresa.","error");return redirect(url_for("cadastros",tipo=tipo))
     if request.method=="POST":
         try:
-            if tipo=="motoristas": db.atualizar_motorista(registro_id,nome=request.form["nome"],codigo=request.form.get("codigo"),cpf=request.form.get("cpf"),telefone=request.form.get("telefone"),email=request.form.get("email"),cnh=request.form.get("cnh"))
+            if tipo=="motoristas": db.atualizar_motorista(registro_id,nome=request.form["nome"],codigo=request.form.get("codigo"),cpf=request.form.get("cpf"),telefone=request.form.get("telefone"),email=request.form.get("email"),cnh=request.form.get("cnh"),categoria_cnh=request.form.get("categoria_cnh"),validade_cnh=request.form.get("validade_cnh") or None,status=request.form.get("status","Ativo"),observacoes=request.form.get("observacoes"))
             elif tipo=="veiculos":
                 placa="".join(c for c in request.form["placa"].upper() if c.isalnum())
                 if len(placa)!=7: raise ValueError("Informe uma placa válida com 7 caracteres.")
-                db.atualizar_veiculo(registro_id,placa=placa,codigo=request.form.get("codigo"),marca=request.form.get("marca"),descricao=request.form.get("modelo"),tipo=request.form.get("tipo"),status=request.form["status"])
+                db.atualizar_veiculo(registro_id,placa=placa,codigo=request.form.get("codigo"),marca=request.form.get("marca"),descricao=request.form.get("modelo"),ano=int(request.form["ano"]) if request.form.get("ano") else None,tipo=request.form.get("tipo"),quilometragem=numero(request.form.get("quilometragem")),motorista_id=int(request.form["motorista_id"]) if request.form.get("motorista_id") else None,status=request.form["status"])
             else: raise ValueError("Cadastro inválido.")
             flash("Cadastro atualizado com sucesso.","success")
         except (ValueError,KeyError) as e: flash(str(e) or "Confira os dados informados.","error")
         return redirect(url_for("cadastros",tipo=tipo))
-    return render_template("editar_cadastro.html",empresas=empresas,empresa=empresa,tipo=tipo,registro=registro)
+    return render_template("editar_cadastro.html",empresas=empresas,empresa=empresa,tipo=tipo,registro=registro,motoristas=db.listar_motoristas(eid))
 
 @app.route("/usuarios",methods=["GET","POST"])
 @login_required

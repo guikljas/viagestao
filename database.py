@@ -161,9 +161,9 @@ def excluir_veiculo(i):
  if _one("SELECT 1 FROM viagens WHERE veiculo_id=?",(i,)): raise ValueError("Este veículo possui viagens registradas; marque-o como inativo para preservar o histórico.")
  c=conectar();c.execute("DELETE FROM veiculos WHERE id=?",(i,));c.commit();c.close()
 def atualizar_motorista(i,**d):
- c=conectar();c.execute("UPDATE motoristas SET nome=:nome,codigo=:codigo,cpf=:cpf,telefone=:telefone,email=:email,cnh=:cnh WHERE id=:id",dict(d,id=i));c.commit();c.close()
+ c=conectar();c.execute("UPDATE motoristas SET nome=:nome,codigo=:codigo,cpf=:cpf,telefone=:telefone,email=:email,cnh=:cnh,categoria_cnh=:categoria_cnh,validade_cnh=:validade_cnh,status=:status,observacoes=:observacoes WHERE id=:id",dict(d,id=i));c.commit();c.close()
 def atualizar_veiculo(i,**d):
- c=conectar();c.execute("UPDATE veiculos SET placa=:placa,codigo=:codigo,marca=:marca,descricao=:descricao,tipo=:tipo,status=:status WHERE id=:id",dict(d,id=i));c.commit();c.close()
+ c=conectar();c.execute("UPDATE veiculos SET placa=:placa,codigo=:codigo,marca=:marca,descricao=:descricao,ano=:ano,tipo=:tipo,quilometragem=:quilometragem,motorista_id=:motorista_id,status=:status WHERE id=:id",dict(d,id=i));c.commit();c.close()
 def excluir_usuario(i):
  c=conectar();c.execute("DELETE FROM usuario_empresas WHERE usuario_id=?",(i,));c.execute("DELETE FROM usuarios WHERE id=?",(i,));c.commit();c.close()
 def listar_cargas(viagem_id=None):
