@@ -126,8 +126,8 @@ def listar_veiculos(e):return _rows("SELECT v.*,m.nome motorista_nome FROM veicu
 def criar_veiculo(**d):
  return _insert_id("INSERT INTO veiculos(placa,codigo,descricao,marca,ano,tipo,quilometragem,status,motorista_id,empresa_id) VALUES(:placa,:codigo,:descricao,:marca,:ano,:tipo,:quilometragem,:status,:motorista_id,:empresa_id)",d)
 def criar_viagem(**d):
- for k,v in {"motivo":None,"cliente_atividade":None,"status":"Planejada","valor_adiantamento":0,"valor_nf_ida":0,"valor_nf_retorno":0}.items():d.setdefault(k,v)
- return _insert_id("INSERT INTO viagens(empresa_id,motorista_id,veiculo_id,data_inicio,data_fim,origem,destino,motivo,cliente_atividade,hodometro_inicio,hodometro_fim,media_computador_bordo,valor_adiantamento,valor_nf_ida,valor_nf_retorno,status,observacoes) VALUES(:empresa_id,:motorista_id,:veiculo_id,:data_inicio,:data_fim,:origem,:destino,:motivo,:cliente_atividade,:hodometro_inicio,:hodometro_fim,:media_computador_bordo,:valor_adiantamento,:valor_nf_ida,:valor_nf_retorno,:status,:observacoes)",d)
+ for k,v in {"motivo":None,"cliente_atividade":None,"status":"Planejada","valor_adiantamento":0,"valor_devolvido":0,"valor_nf_ida":0,"valor_nf_retorno":0}.items():d.setdefault(k,v)
+ return _insert_id("INSERT INTO viagens(empresa_id,motorista_id,veiculo_id,data_inicio,data_fim,origem,destino,motivo,cliente_atividade,hodometro_inicio,hodometro_fim,media_computador_bordo,valor_adiantamento,valor_devolvido,valor_nf_ida,valor_nf_retorno,status,observacoes) VALUES(:empresa_id,:motorista_id,:veiculo_id,:data_inicio,:data_fim,:origem,:destino,:motivo,:cliente_atividade,:hodometro_inicio,:hodometro_fim,:media_computador_bordo,:valor_adiantamento,:valor_devolvido,:valor_nf_ida,:valor_nf_retorno,:status,:observacoes)",d)
 def atualizar_viagem(i,**d):
  c=conectar();c.execute("UPDATE viagens SET data_fim=:data_fim,hodometro_fim=:hodometro_fim,media_computador_bordo=:media_computador_bordo,valor_devolvido=:valor_devolvido,status=:status,observacoes=:observacoes WHERE id=:id",dict(d,id=i));c.commit();c.close()
 def listar_viagens(e=None, empresa_id=None):
