@@ -29,7 +29,11 @@ def context():
 
 def numero(valor, padrao=0.0):
     """Aceita números digitados no padrão brasileiro sem perder a validação."""
-    texto=(valor or "").strip().replace(".", "").replace(",", ".")
+    texto=(valor or "").strip()
+    # Campo number envia 502.73; a digitação brasileira normalmente é 502,73
+    # ou 1.502,73. Tratamos ambos sem alterar a escala do valor.
+    if "," in texto:
+        texto=texto.replace(".", "").replace(",", ".")
     return float(texto) if texto else padrao
 
 def viagens_da_empresa(empresa_id):
