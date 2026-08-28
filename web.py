@@ -2,7 +2,7 @@
 import os, tempfile, uuid
 from datetime import date
 from functools import wraps
-from flask import Flask, flash, redirect, render_template, request, session, url_for, send_file
+from flask import Flask, abort, flash, redirect, render_template, request, session, url_for, send_file
 import database as db
 from relatorio import gerar_relatorio
 from utils import fmt_placa
@@ -108,11 +108,28 @@ def despesas():
 @app.post("/despesas/<int:despesa_id>/<acao>")
 @login_required
 def acao_despesa(despesa_id,acao):
+    return _processar_acao_despesa(despesa_id,acao)
+
+def _processar_acao_despesa(despesa_id, acao):
     empresas,eid,empresa=context()
-    if session["perfil"] not in ("Administrador","Gestor","Financeiro"): flash("Você não tem permissão para aprovar despesas.","error")
+    despesa=next((x for x in db.listar_despesas(empresa_id=eid) if x["id"]==despesa_id),None)
+    if not despesa: flash("Despesa não encontrada nesta empresa.","error")
+    elif session["perfil"] not in ("Administrador","Gestor","Financeiro"): flash("Você não tem permissão para aprovar despesas.","error")
     elif acao=="aprovar": db.alterar_status_despesa(despesa_id,"Aprovada");db.auditar(session["user_id"],eid,"Aprovação","Despesa",despesa_id);flash("Despesa aprovada.","success")
     elif acao=="reprovar": db.alterar_status_despesa(despesa_id,"Reprovada",request.form.get("motivo"));db.auditar(session["user_id"],eid,"Reprovação","Despesa",despesa_id);flash("Despesa reprovada.","success")
+    else: flash("Ação de despesa inválida.","error")
     return redirect(url_for("despesas"))
+
+@app.post("/despesas/aprovar/<int:despesa_id>")
+@login_required
+def aprovar_despesa(despesa_id):
+    """URL explícita para os botões — evita ambiguidades em proxies do deploy."""
+    return _processar_acao_despesa(despesa_id,"aprovar")
+
+@app.post("/despesas/reprovar/<int:despesa_id>")
+@login_required
+def reprovar_despesa(despesa_id):
+    return _processar_acao_despesa(despesa_id,"reprovar")
 
 @app.post("/despesas/<int:despesa_id>/excluir")
 @login_required
@@ -150,13 +167,22 @@ def excluir_carga(carga_id):
 @app.get("/consultar-viagens")
 @login_required
 def consultar_viagens():
-    empresas,eid,empresa=context(); viagens=viagens_da_empresa(eid); viagem_id=request.args.get("viagem",type=int)
-    escolhida=next((x for x in viagens if x["id"]==viagem_id),None)
+    empresas,eid,empresa=context(); todas_viagens=viagens_da_empresa(eid)
+    tamanho=request.args.get("por_pagina",10,type=int)
+    if tamanho not in (5,10,20): tamanho=10
+    total=len(todas_viagens); paginas=max(1,(total+tamanho-1)//tamanho)
+    pagina=max(1,min(request.args.get("pagina",1,type=int),paginas))
+    viagem_id=request.args.get("viagem",type=int)
+    escolhida=next((x for x in todas_viagens if x["id"]==viagem_id),None)
+    # Ao entrar na consulta, abre a mais recente; a seleção seguinte preserva
+    # a página atual sem renderizar a lista inteira de viagens.
+    if escolhida is None and todas_viagens: escolhida=todas_viagens[0]
+    inicio=(pagina-1)*tamanho; viagens=todas_viagens[inicio:inicio+tamanho]
     detalhes=None
     if escolhida:
         despesas=db.listar_despesas(escolhida["id"]); cargas_viagem=db.listar_cargas(escolhida["id"])
         detalhes=analisar_viagem(escolhida,despesas,cargas_viagem)
-    return render_template("consultar_viagens.html",empresas=empresas,empresa=empresa,viagens=viagens,viagem=escolhida,despesas=despesas if escolhida else [],cargas=cargas_viagem if escolhida else [],detalhes=detalhes)
+    return render_template("consultar_viagens.html",empresas=empresas,empresa=empresa,viagens=viagens,viagem=escolhida,despesas=despesas if escolhida else [],cargas=cargas_viagem if escolhida else [],detalhes=detalhes,pagina=pagina,paginas=paginas,por_pagina=tamanho,total_viagens=total)
 
 @app.get("/relatorio-mensal")
 @login_required
@@ -216,7 +242,7 @@ def excluir_cadastro(tipo,registro_id):
             else: raise ValueError("Cadastro inválido.")
             flash("Registro excluído.","success")
         except ValueError as e: flash(str(e),"error")
-    return redirect(url_for("cadastros",tipo=tipo))
+    return redirect(url_for("cadastros",tipo=tipo,empresa=eid))
 
 @app.route("/cadastros/<tipo>/<int:registro_id>/editar",methods=["GET","POST"])
 @login_required
@@ -236,7 +262,7 @@ def editar_cadastro(tipo,registro_id):
             else: raise ValueError("Cadastro inválido.")
             flash("Cadastro atualizado com sucesso.","success")
         except (ValueError,KeyError) as e: flash(str(e) or "Confira os dados informados.","error")
-        return redirect(url_for("cadastros",tipo=tipo))
+        return redirect(url_for("cadastros",tipo=tipo,empresa=eid))
     return render_template("editar_cadastro.html",empresas=empresas,empresa=empresa,tipo=tipo,registro=registro,motoristas=db.listar_motoristas(eid))
 
 @app.route("/usuarios",methods=["GET","POST"])
