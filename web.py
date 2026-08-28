@@ -161,6 +161,7 @@ def excluir_usuario(usuario_id):
     else: db.excluir_usuario(usuario_id);flash("Usuário excluído.","success")
     return redirect(url_for("usuarios"))
 
+@app.get("/excel")
 @app.get("/relatorios/excel")
 @login_required
 def exportar_excel():
