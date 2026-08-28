@@ -1,5 +1,5 @@
 """Interface web do ViaGestão, pronta para hospedagem WSGI."""
-import os
+import os, tempfile, uuid
 from datetime import date
 from functools import wraps
 from flask import Flask, flash, redirect, render_template, request, session, url_for, send_file
@@ -164,7 +164,10 @@ def excluir_usuario(usuario_id):
 @app.get("/relatorios/excel")
 @login_required
 def exportar_excel():
-    empresas,eid,empresa=context(); caminho=gerar_relatorio(empresa_id=eid)
+    empresas,eid,empresa=context()
+    # Em funções Vercel apenas /tmp é gravável; localmente também funciona.
+    caminho=os.path.join(tempfile.gettempdir(),f"relatorio_{empresa['nome'].lower()}_{uuid.uuid4().hex}.xlsx")
+    gerar_relatorio(empresa_id=eid,caminho_saida=caminho)
     return send_file(caminho,as_attachment=True,download_name=f"relatorio_{empresa['nome'].lower()}.xlsx")
 
 @app.get("/relatorios")
