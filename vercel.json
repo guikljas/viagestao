@@ -1,9 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
-    { "source": "/excel", "destination": "/api/index.py?path=excel" },
-    { "source": "/relatorios/excel", "destination": "/api/index.py?path=relatorios/excel" },
-    { "source": "/(.*)", "destination": "/api/index.py?path=$1" }
+    { "source": "/((?!api/).*)", "destination": "/api/index.py?path=$1" }
   ],
   "functions": {
     "api/index.py": {
