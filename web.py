@@ -39,6 +39,9 @@ def numero(valor, padrao=0.0):
 def viagens_da_empresa(empresa_id):
     return db.listar_viagens(empresa_id)
 
+def rota_cadastro(tipo):
+    return "acesso_motoristas" if tipo == "motoristas" else "acesso_veiculos"
+
 @app.route("/login",methods=["GET","POST"])
 def login():
     if request.method=="POST":
@@ -206,18 +209,20 @@ def cadastros(tipo):
 @app.get("/motoristas")
 @login_required
 def acesso_motoristas():
-    return redirect(url_for("cadastros",tipo="motoristas",empresa=request.args.get("empresa")))
+    empresas,eid,empresa=context()
+    return render_template("motoristas.html",empresas=empresas,empresa=empresa,dados=db.listar_motoristas(eid))
 
 @app.get("/veiculos")
 @login_required
 def acesso_veiculos():
-    return redirect(url_for("cadastros",tipo="veiculos",empresa=request.args.get("empresa")))
+    empresas,eid,empresa=context()
+    return render_template("veiculos.html",empresas=empresas,empresa=empresa,dados=db.listar_veiculos(eid),motoristas=db.listar_motoristas(eid))
 
 @app.post("/cadastros/<tipo>")
 @login_required
 def cadastrar(tipo):
     empresas,eid,empresa=context()
-    if session["perfil"] != "Administrador": flash("Apenas administradores podem alterar cadastros.","error"); return redirect(url_for("cadastros",tipo=tipo))
+    if session["perfil"] != "Administrador": flash("Apenas administradores podem alterar cadastros.","error"); return redirect(url_for(rota_cadastro(tipo)))
     try:
         if tipo=="motoristas":
             db.criar_motorista(nome=request.form["nome"],codigo=request.form.get("codigo"),cpf=request.form.get("cpf"),telefone=request.form.get("telefone"),email=request.form.get("email"),cnh=request.form.get("cnh"),categoria_cnh=request.form.get("categoria_cnh"),validade_cnh=request.form.get("validade_cnh") or None,status=request.form.get("status","Ativo"),observacoes=request.form.get("observacoes"),empresa_id=eid)
@@ -228,7 +233,7 @@ def cadastrar(tipo):
         else: raise ValueError("Cadastro inválido.")
         flash("Cadastro realizado com sucesso.","success")
     except (ValueError, KeyError) as e: flash(str(e) or "Confira os dados informados.","error")
-    return redirect(url_for("cadastros",tipo=tipo))
+    return redirect(url_for(rota_cadastro(tipo)))
 
 @app.post("/cadastros/<tipo>/<int:registro_id>/excluir")
 @login_required
@@ -242,16 +247,16 @@ def excluir_cadastro(tipo,registro_id):
             else: raise ValueError("Cadastro inválido.")
             flash("Registro excluído.","success")
         except ValueError as e: flash(str(e),"error")
-    return redirect(url_for("cadastros",tipo=tipo,empresa=eid))
+    return redirect(url_for(rota_cadastro(tipo)))
 
 @app.route("/cadastros/<tipo>/<int:registro_id>/editar",methods=["GET","POST"])
 @login_required
 def editar_cadastro(tipo,registro_id):
     empresas,eid,empresa=context()
-    if session["perfil"] != "Administrador": flash("Apenas administradores podem alterar cadastros.","error");return redirect(url_for("cadastros",tipo=tipo))
+    if session["perfil"] != "Administrador": flash("Apenas administradores podem alterar cadastros.","error");return redirect(url_for(rota_cadastro(tipo)))
     dados=db.listar_motoristas(eid) if tipo=="motoristas" else db.listar_veiculos(eid)
     registro=next((x for x in dados if x["id"]==registro_id),None)
-    if not registro: flash("Registro não encontrado nesta empresa.","error");return redirect(url_for("cadastros",tipo=tipo))
+    if not registro: flash("Registro não encontrado nesta empresa.","error");return redirect(url_for(rota_cadastro(tipo)))
     if request.method=="POST":
         try:
             if tipo=="motoristas": db.atualizar_motorista(registro_id,nome=request.form["nome"],codigo=request.form.get("codigo"),cpf=request.form.get("cpf"),telefone=request.form.get("telefone"),email=request.form.get("email"),cnh=request.form.get("cnh"),categoria_cnh=request.form.get("categoria_cnh"),validade_cnh=request.form.get("validade_cnh") or None,status=request.form.get("status","Ativo"),observacoes=request.form.get("observacoes"))
@@ -262,7 +267,7 @@ def editar_cadastro(tipo,registro_id):
             else: raise ValueError("Cadastro inválido.")
             flash("Cadastro atualizado com sucesso.","success")
         except (ValueError,KeyError) as e: flash(str(e) or "Confira os dados informados.","error")
-        return redirect(url_for("cadastros",tipo=tipo,empresa=eid))
+        return redirect(url_for(rota_cadastro(tipo)))
     return render_template("editar_cadastro.html",empresas=empresas,empresa=empresa,tipo=tipo,registro=registro,motoristas=db.listar_motoristas(eid))
 
 @app.route("/usuarios",methods=["GET","POST"])
