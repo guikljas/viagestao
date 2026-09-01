@@ -60,6 +60,47 @@ def placa_chave(placa):
     return "".join(c for c in (placa or "").upper() if c.isalnum())
 
 
+def consolidar_veiculos(empresa_id, gravar):
+    """Unifica placas equivalentes e preserva todas as viagens vinculadas."""
+    grupos = {}
+    for veiculo in db.listar_veiculos(empresa_id):
+        grupos.setdefault(placa_chave(veiculo["placa"]), []).append(veiculo)
+    con = db.conectar()
+    try:
+        viagens = db.listar_viagens(empresa_id)
+        for placa, itens in grupos.items():
+            itens.sort(key=lambda item: (-len([v for v in viagens if v["veiculo_id"] == item["id"]]), item["id"]))
+            principal = itens[0]
+            motorista_principal = principal["motorista_id"]
+            if gravar:
+                con.execute("UPDATE veiculos SET placa=? WHERE id=?", (placa, principal["id"]))
+            for duplicado in itens[1:]:
+                if gravar:
+                    if motorista_principal is None and duplicado["motorista_id"] is not None:
+                        con.execute("UPDATE veiculos SET motorista_id=? WHERE id=?", (duplicado["motorista_id"], principal["id"]))
+                        motorista_principal = duplicado["motorista_id"]
+                    con.execute("UPDATE viagens SET veiculo_id=? WHERE veiculo_id=?", (principal["id"], duplicado["id"]))
+                    con.execute("DELETE FROM veiculos WHERE id=?", (duplicado["id"],))
+        if gravar:
+            con.commit()
+    finally:
+        con.close()
+
+
+def definir_codigos_veiculos(empresa_id, empresa, gravar):
+    prefixo = "MKV" if empresa == "MARK" else "ERXV"
+    veiculos = sorted(db.listar_veiculos(empresa_id), key=lambda item: placa_chave(item["placa"]))
+    if gravar:
+        con = db.conectar()
+        try:
+            for posicao, veiculo in enumerate(veiculos, 1):
+                con.execute("UPDATE veiculos SET codigo=? WHERE id=?", (f"{prefixo}-{posicao:03d}", veiculo["id"]))
+            con.commit()
+        finally:
+            con.close()
+    return len(veiculos)
+
+
 def valor(row, campo, padrao=None):
     return row[campo] if campo in row.keys() else padrao
 
@@ -168,6 +209,7 @@ def importar(arquivo_zip, gravar):
             for origem_empresa_id, origem_empresa in empresas_origem.items():
                 empresa_id, empresa = obter_id_empresa(origem_empresa)
                 mapa_motoristas = consolidar_motoristas(empresa_id, empresa, gravar)
+                consolidar_veiculos(empresa_id, gravar)
                 mapa_veiculos = {placa_chave(v["placa"]): v["id"] for v in db.listar_veiculos(empresa_id)}
                 motoristas_origem = {x["id"]: x for x in origem.execute("SELECT * FROM motoristas WHERE empresa_id=?", (origem_empresa_id,))}
                 veiculos_origem = {x["id"]: x for x in origem.execute("SELECT * FROM veiculos WHERE empresa_id=?", (origem_empresa_id,))}
@@ -205,6 +247,7 @@ def importar(arquivo_zip, gravar):
                             db.criar_carga(viagem_id=destino_viagem, empresa_cliente=carga["empresa_cliente"], tipo=carga["tipo"], data=carga["data"], valor=carga["valor"], descricao=valor(carga, "descricao"))
                             resumo["cargas"] += 1
                 resumo[f"codigos_{empresa}"] = definir_codigos(empresa_id, empresa, gravar)
+                resumo[f"codigos_veiculos_{empresa}"] = definir_codigos_veiculos(empresa_id, empresa, gravar)
             return resumo
         finally:
             origem.close()

@@ -237,3 +237,24 @@ def analisar_consumo_mes(viagens_com_despesas: list, veiculos: list = None, moto
         d["consumo_medio"] = (d["km"] / d["litros"]) if d["litros"] else None
 
     return {"por_veiculo": por_veiculo, "por_motorista": por_motorista}
+
+
+def analisar_frota_historica(viagens_com_despesas: list, veiculos: list) -> list:
+    """Consolida todos os lançamentos já registrados por veículo."""
+    frota = {
+        item["id"]: {"placa": item["placa"], "codigo": item["codigo"], "viagens": 0,
+                     "km": 0.0, "litros": 0.0, "despesas": 0.0, "consumo_medio": None}
+        for item in veiculos
+    }
+    for viagem, despesas in viagens_com_despesas:
+        item = frota.setdefault(viagem["veiculo_id"], {"placa": viagem["veiculo_placa"], "codigo": viagem["veiculo_codigo"], "viagens": 0, "km": 0.0, "litros": 0.0, "despesas": 0.0, "consumo_medio": None})
+        item["viagens"] += 1
+        item["despesas"] += sum(float(d["valor"]) for d in despesas)
+        if viagem["hodometro_fim"] is not None:
+            km = float(viagem["hodometro_fim"]) - float(viagem["hodometro_inicio"])
+            if km > 0:
+                item["km"] += km
+        item["litros"] += sum(float(d["litros"] or 0) for d in despesas if categoria_chave(d["categoria"]) == "COMBUSTIVEL")
+    for item in frota.values():
+        item["consumo_medio"] = item["km"] / item["litros"] if item["litros"] else None
+    return sorted(frota.values(), key=lambda item: item["despesas"], reverse=True)
