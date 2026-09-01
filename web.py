@@ -281,14 +281,14 @@ def normalizar_motoristas_publicado():
     empresas,eid,empresa=context()
     if session["perfil"] != "Administrador":
         flash("Apenas administradores podem consolidar cadastros.","error")
-    elif empresa["nome"] != "MARK":
-        flash("A consolidação solicitada está disponível somente para a MARK.","error")
+    elif empresa["nome"] not in ("MARK", "ERIMAX"):
+        flash("A consolidação não está disponível para esta empresa.","error")
     else:
         antes=len(db.listar_motoristas(eid))
-        consolidar_motoristas(eid,"MARK",gravar=True)
-        depois=definir_codigos(eid,"MARK",gravar=True)
+        consolidar_motoristas(eid,empresa["nome"],gravar=True)
+        depois=definir_codigos(eid,empresa["nome"],gravar=True)
         db.auditar(session["user_id"],eid,"Consolidação de motoristas","Motorista")
-        flash(f"Cadastros da MARK normalizados: {antes-depois} duplicidade(s) unificada(s) e {depois} código(s) atualizados.","success")
+        flash(f"Cadastros da {empresa['nome']} normalizados: {antes-depois} duplicidade(s) unificada(s) e {depois} código(s) atualizados.","success")
     return redirect(url_for("acesso_motoristas"))
 
 @app.get("/veiculos")

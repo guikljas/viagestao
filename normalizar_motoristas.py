@@ -45,7 +45,8 @@ def executar(nome_empresa, gravar):
     consolidar_motoristas(empresa["id"], nome_empresa, gravar=gravar)
     if gravar:
         quantidade_depois = definir_codigos(empresa["id"], nome_empresa, gravar=True)
-        print(f"Concluído: {quantidade_depois} motoristas mantidos e códigos MK-### atualizados.")
+        prefixo = "MK" if nome_empresa == "MARK" else "ERX"
+        print(f"Concluído: {quantidade_depois} motoristas mantidos e códigos {prefixo}-### atualizados.")
     else:
         print(f"Simulação concluída: {quantidade_prevista} motoristas permanecerão. Execute novamente com --confirmar para gravar.")
 
