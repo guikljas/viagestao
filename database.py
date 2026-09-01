@@ -130,6 +130,23 @@ def criar_viagem(**d):
  return _insert_id("INSERT INTO viagens(empresa_id,motorista_id,veiculo_id,data_inicio,data_fim,origem,destino,motivo,cliente_atividade,hodometro_inicio,hodometro_fim,media_computador_bordo,valor_adiantamento,valor_devolvido,valor_nf_ida,valor_nf_retorno,status,observacoes) VALUES(:empresa_id,:motorista_id,:veiculo_id,:data_inicio,:data_fim,:origem,:destino,:motivo,:cliente_atividade,:hodometro_inicio,:hodometro_fim,:media_computador_bordo,:valor_adiantamento,:valor_devolvido,:valor_nf_ida,:valor_nf_retorno,:status,:observacoes)",d)
 def atualizar_viagem(i,**d):
  c=conectar();c.execute("UPDATE viagens SET data_fim=:data_fim,hodometro_fim=:hodometro_fim,media_computador_bordo=:media_computador_bordo,valor_devolvido=:valor_devolvido,status=:status,observacoes=:observacoes WHERE id=:id",dict(d,id=i));c.commit();c.close()
+def atualizar_dados_basicos_viagem(i,**d):
+ """Atualiza os dados de abertura sem misturar com o fechamento da viagem."""
+ c=conectar();c.execute("UPDATE viagens SET motorista_id=:motorista_id,veiculo_id=:veiculo_id,data_inicio=:data_inicio,origem=:origem,destino=:destino,motivo=:motivo,cliente_atividade=:cliente_atividade,hodometro_inicio=:hodometro_inicio,valor_adiantamento=:valor_adiantamento,observacoes=:observacoes WHERE id=:id",dict(d,id=i));c.commit();c.close()
+def excluir_viagem(i):
+ """Remove uma viagem e seus lançamentos dependentes de forma transacional."""
+ c=conectar()
+ try:
+  c.execute("DELETE FROM pagamentos WHERE despesa_id IN (SELECT id FROM despesas WHERE viagem_id=?)",(i,))
+  c.execute("DELETE FROM anexos_despesa WHERE despesa_id IN (SELECT id FROM despesas WHERE viagem_id=?)",(i,))
+  c.execute("DELETE FROM despesas WHERE viagem_id=?",(i,))
+  c.execute("DELETE FROM cargas WHERE viagem_id=?",(i,))
+  c.execute("DELETE FROM viagens WHERE id=?",(i,))
+  c.commit()
+ except Exception:
+  c.raw.rollback() if USANDO_POSTGRES else c.rollback()
+  raise
+ finally:c.close()
 def listar_viagens(e=None, empresa_id=None):
  e = empresa_id if empresa_id is not None else e
  q="SELECT v.*,em.nome empresa_nome,m.nome motorista_nome,m.codigo motorista_codigo,ve.placa veiculo_placa,ve.codigo veiculo_codigo FROM viagens v JOIN empresas em ON em.id=v.empresa_id JOIN motoristas m ON m.id=v.motorista_id JOIN veiculos ve ON ve.id=v.veiculo_id";return _rows(q+(" WHERE v.empresa_id=?" if e else "")+" ORDER BY v.data_inicio DESC",(e,) if e else ())

@@ -92,7 +92,34 @@ def atualizar_viagem():
         except (ValueError,KeyError): flash("Confira os dados de fechamento.","error")
         return redirect(url_for("atualizar_viagem"))
     analise=analisar_viagem(escolhida,db.listar_despesas(escolhida["id"]),db.listar_cargas(escolhida["id"])) if escolhida else None
-    return render_template("atualizar_viagem.html",empresas=empresas,empresa=empresa,viagens=viagens,viagem=escolhida,analise=analise,hoje=date.today().isoformat())
+    return render_template("atualizar_viagem.html",empresas=empresas,empresa=empresa,viagens=viagens,viagem=escolhida,analise=analise,hoje=date.today().isoformat(),motoristas=db.listar_motoristas(eid),veiculos=db.listar_veiculos(eid))
+
+@app.post("/editar-viagem")
+@login_required
+def editar_viagem():
+    empresas,eid,empresa=context(); viagem_id=request.form.get("viagem",type=int)
+    viagem=next((x for x in viagens_da_empresa(eid) if x["id"]==viagem_id),None)
+    if not viagem: flash("Viagem não encontrada nesta empresa.","error")
+    else:
+        try:
+            motorista_id=int(request.form["motorista"]); veiculo_id=int(request.form["veiculo"])
+            if not any(x["id"]==motorista_id for x in db.listar_motoristas(eid)): raise ValueError
+            if not any(x["id"]==veiculo_id for x in db.listar_veiculos(eid)): raise ValueError
+            db.atualizar_dados_basicos_viagem(viagem_id,motorista_id=motorista_id,veiculo_id=veiculo_id,data_inicio=request.form["data_inicio"],origem=request.form.get("origem"),destino=request.form.get("destino"),motivo=request.form.get("motivo"),cliente_atividade=request.form.get("cliente"),hodometro_inicio=numero(request.form.get("km_inicial")),valor_adiantamento=numero(request.form.get("adiantamento")),observacoes=request.form.get("observacoes"))
+            db.auditar(session["user_id"],eid,"Edição de dados básicos","Viagem",viagem_id); flash("Informações básicas da viagem atualizadas.","success")
+        except (ValueError,KeyError): flash("Confira os dados básicos da viagem.","error")
+    return redirect(url_for("atualizar_viagem",viagem=viagem_id))
+
+@app.post("/excluir-viagem")
+@login_required
+def excluir_viagem():
+    empresas,eid,empresa=context(); viagem_id=request.form.get("viagem",type=int)
+    viagem=next((x for x in viagens_da_empresa(eid) if x["id"]==viagem_id),None)
+    if session["perfil"] != "Administrador": flash("Apenas administradores podem excluir viagens.","error")
+    elif not viagem: flash("Viagem não encontrada nesta empresa.","error")
+    else:
+        db.excluir_viagem(viagem_id); db.auditar(session["user_id"],eid,"Exclusão","Viagem",viagem_id); flash("Viagem e seus lançamentos foram excluídos.","success")
+    return redirect(url_for("atualizar_viagem"))
 
 @app.route("/despesas",methods=["GET","POST"])
 @login_required
@@ -212,7 +239,27 @@ def relatorio_mensal():
     for v in viagens: cargas_mes.extend([c for c in db.listar_cargas(v["id"]) if str(c["data"]).startswith(prefixo)])
     dados=analisar_mes(despesas,cargas_mes)
     consumo=analisar_consumo_mes([(v,db.listar_despesas(v["id"])) for v in viagens])
-    return render_template("relatorio_mensal.html",empresas=empresas,empresa=empresa,ano=ano,mes=mes,dados=dados,consumo=consumo,viagens=viagens)
+    cores=["#0877c7","#38a7df","#ff8200","#7558c8","#40a77a","#d55b68"]
+    por_categoria={}
+    for despesa in despesas: por_categoria[despesa["categoria"]]=por_categoria.get(despesa["categoria"],0)+float(despesa["valor"])
+    total_categoria=sum(por_categoria.values())
+    grafico_categorias=[{"nome":nome,"valor":valor,"percentual":(valor/total_categoria*100 if total_categoria else 0),"cor":cores[i%len(cores)]} for i,(nome,valor) in enumerate(sorted(por_categoria.items(),key=lambda item:item[1],reverse=True))]
+    fatias=[]; acumulado=0
+    for item in grafico_categorias:
+        fim=acumulado+item["percentual"]; fatias.append(f"{item['cor']} {acumulado:.2f}% {fim:.2f}%"); acumulado=fim
+    donut_css="conic-gradient("+", ".join(fatias)+")" if fatias else "conic-gradient(#e6edf4 0 100%)"
+    historico=[]
+    todas_despesas=db.listar_despesas(empresa_id=eid)
+    for deslocamento in range(5,-1,-1):
+        indice=ano*12+(mes-1)-deslocamento; ano_item=indice//12; mes_item=indice%12+1; inicio=f"{ano_item:04d}-{mes_item:02d}"
+        valor=sum(float(d["valor"]) for d in todas_despesas if str(d["data"]).startswith(inicio))
+        receita=0
+        for viagem_item in viagens_da_empresa(eid):
+            if str(viagem_item["data_inicio"]).startswith(inicio): receita+=sum(float(c["valor"]) for c in db.listar_cargas(viagem_item["id"]) if str(c["data"]).startswith(inicio))
+        historico.append({"rotulo":f"{mes_item:02d}/{ano_item}","despesa":valor,"receita":receita})
+    maior=max([x["despesa"] for x in historico]+[1])
+    for item in historico: item["altura"]=max(4,round(item["despesa"] / maior * 100)) if item["despesa"] else 0
+    return render_template("relatorio_mensal.html",empresas=empresas,empresa=empresa,ano=ano,mes=mes,dados=dados,consumo=consumo,viagens=viagens,grafico_categorias=grafico_categorias,donut_css=donut_css,historico=historico)
 
 @app.route("/cadastros/<tipo>")
 @login_required
