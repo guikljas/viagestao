@@ -6,8 +6,9 @@ from flask import Flask, abort, flash, redirect, render_template, request, sessi
 import database as db
 from relatorio import gerar_relatorio
 from utils import fmt_placa
-from analise import analisar_consumo_mes, analisar_mes, analisar_viagem
-from importar_historico_zip import consolidar_motoristas, definir_codigos
+from analise import analisar_consumo_mes, analisar_mes, analisar_viagem, analisar_frota_historica
+from importar_historico_zip import consolidar_motoristas, definir_codigos, consolidar_veiculos, definir_codigos_veiculos
+from mapa_estados import calcular_mapa_estados
 
 app = Flask(__name__, static_folder="public", static_url_path="/static")
 app.config.update(SECRET_KEY=os.environ.get("VIAGESTAO_SECRET", "desenvolvimento-local-altere-em-producao"), MAX_CONTENT_LENGTH=10 * 1024 * 1024)
@@ -65,7 +66,9 @@ def dashboard():
     empresas,eid,empresa=context(); resumo=db.resumo_dashboard(eid); despesas=resumo["despesas"]
     categories={}
     for x in despesas: categories[x["categoria"]]=categories.get(x["categoria"],0)+x["valor"]
-    return render_template("dashboard.html",empresas=empresas,empresa=empresa,resumo=resumo,categories=categories)
+    veiculos=db.listar_veiculos(eid); todas_viagens=viagens_da_empresa(eid)
+    frota_historica=analisar_frota_historica([(viagem,db.listar_despesas(viagem["id"])) for viagem in todas_viagens],veiculos)
+    return render_template("dashboard.html",empresas=empresas,empresa=empresa,resumo=resumo,categories=categories,frota_historica=frota_historica)
 
 @app.route("/viagens",methods=["GET","POST"])
 @login_required
@@ -235,34 +238,37 @@ def consultar_viagens():
 @app.get("/relatorio-mensal")
 @login_required
 def relatorio_mensal():
-    empresas,eid,empresa=context(); hoje=date.today(); ano=max(2020,request.args.get("ano",hoje.year,type=int)); mes=min(12,max(1,request.args.get("mes",hoje.month,type=int))); prefixo=f"{ano:04d}-{mes:02d}"
-    viagens=[v for v in viagens_da_empresa(eid) if str(v["data_inicio"]).startswith(prefixo)]
-    despesas=[d for d in db.listar_despesas(empresa_id=eid) if str(d["data"]).startswith(prefixo)]
-    cargas_mes=[]
-    for v in viagens: cargas_mes.extend([c for c in db.listar_cargas(v["id"]) if str(c["data"]).startswith(prefixo)])
+    empresas,eid,empresa=context(); hoje=date.today(); ano=max(2020,request.args.get("ano",hoje.year,type=int)); mes=min(12,max(1,request.args.get("mes",hoje.month,type=int))); pagina=min(3,max(1,request.args.get("pagina",1,type=int)))
+    inicio_mes=date(ano,mes,1); fim_mes=date(ano+1,1,1) if mes==12 else date(ano,mes+1,1)
+    viagens=[v for v in viagens_da_empresa(eid) if inicio_mes.isoformat()<=str(v["data_inicio"])<fim_mes.isoformat()]
+    despesas=db.listar_despesas_periodo(eid,inicio_mes.isoformat(),fim_mes.isoformat())
+    cargas_mes=db.listar_cargas_periodo(eid,inicio_mes.isoformat(),fim_mes.isoformat())
     dados=analisar_mes(despesas,cargas_mes)
-    consumo=analisar_consumo_mes([(v,db.listar_despesas(v["id"])) for v in viagens],veiculos=db.listar_veiculos(eid),motoristas=db.listar_motoristas(eid))
-    cores=["#0d5c93","#c61e2d","#4d87b5","#e55261","#59749c","#9e1d31"] if empresa["nome"]=="MARK" else ["#0877c7","#38a7df","#ff8200","#7558c8","#40a77a","#d55b68"]
-    por_categoria={}
-    for despesa in despesas: por_categoria[despesa["categoria"]]=por_categoria.get(despesa["categoria"],0)+float(despesa["valor"])
-    total_categoria=sum(por_categoria.values())
-    grafico_categorias=[{"nome":nome,"valor":valor,"percentual":(valor/total_categoria*100 if total_categoria else 0),"cor":cores[i%len(cores)]} for i,(nome,valor) in enumerate(sorted(por_categoria.items(),key=lambda item:item[1],reverse=True))]
-    fatias=[]; acumulado=0
-    for item in grafico_categorias:
-        fim=acumulado+item["percentual"]; fatias.append(f"{item['cor']} {acumulado:.2f}% {fim:.2f}%"); acumulado=fim
-    donut_css="conic-gradient("+", ".join(fatias)+")" if fatias else "conic-gradient(#e6edf4 0 100%)"
-    historico=[]
-    todas_despesas=db.listar_despesas(empresa_id=eid)
-    for deslocamento in range(5,-1,-1):
-        indice=ano*12+(mes-1)-deslocamento; ano_item=indice//12; mes_item=indice%12+1; inicio=f"{ano_item:04d}-{mes_item:02d}"
-        valor=sum(float(d["valor"]) for d in todas_despesas if str(d["data"]).startswith(inicio))
-        receita=0
-        for viagem_item in viagens_da_empresa(eid):
-            if str(viagem_item["data_inicio"]).startswith(inicio): receita+=sum(float(c["valor"]) for c in db.listar_cargas(viagem_item["id"]) if str(c["data"]).startswith(inicio))
-        historico.append({"rotulo":f"{mes_item:02d}/{ano_item}","despesa":valor,"receita":receita})
-    maior=max([x["despesa"] for x in historico]+[1])
-    for item in historico: item["altura"]=max(4,round(item["despesa"] / maior * 100)) if item["despesa"] else 0
-    return render_template("relatorio_mensal.html",empresas=empresas,empresa=empresa,ano=ano,mes=mes,dados=dados,consumo=consumo,viagens=viagens,grafico_categorias=grafico_categorias,donut_css=donut_css,historico=historico)
+    consumo={"por_veiculo":{},"por_motorista":{}};grafico_categorias=[];donut_css="conic-gradient(#e6edf4 0 100%)";historico=[];mapa_estados={}
+    if pagina==1:
+        cores=["#0d5c93","#c61e2d","#4d87b5","#e55261","#59749c","#9e1d31"] if empresa["nome"]=="MARK" else ["#0877c7","#38a7df","#ff8200","#7558c8","#40a77a","#d55b68"]
+        por_categoria={}
+        for despesa in despesas: por_categoria[despesa["categoria"]]=por_categoria.get(despesa["categoria"],0)+float(despesa["valor"])
+        total_categoria=sum(por_categoria.values())
+        grafico_categorias=[{"nome":nome,"valor":valor,"percentual":(valor/total_categoria*100 if total_categoria else 0),"cor":cores[i%len(cores)]} for i,(nome,valor) in enumerate(sorted(por_categoria.items(),key=lambda item:item[1],reverse=True))]
+        fatias=[]; acumulado=0
+        for item in grafico_categorias:
+            fim=acumulado+item["percentual"]; fatias.append(f"{item['cor']} {acumulado:.2f}% {fim:.2f}%"); acumulado=fim
+        donut_css="conic-gradient("+", ".join(fatias)+")" if fatias else donut_css
+        indice=ano*12+(mes-1)-5; inicio_historico=date(indice//12,indice%12+1,1)
+        despesas_historico=db.listar_despesas_periodo(eid,inicio_historico.isoformat(),fim_mes.isoformat()); cargas_historico=db.listar_cargas_periodo(eid,inicio_historico.isoformat(),fim_mes.isoformat())
+        for deslocamento in range(5,-1,-1):
+            indice=ano*12+(mes-1)-deslocamento; ano_item=indice//12; mes_item=indice%12+1; prefixo=f"{ano_item:04d}-{mes_item:02d}"
+            historico.append({"rotulo":f"{mes_item:02d}/{ano_item}","despesa":sum(float(d["valor"]) for d in despesas_historico if str(d["data"]).startswith(prefixo)),"receita":sum(float(c["valor"]) for c in cargas_historico if str(c["data"]).startswith(prefixo))})
+        maior=max([x["despesa"] for x in historico]+[1])
+        for item in historico: item["altura"]=max(4,round(item["despesa"] / maior * 100)) if item["despesa"] else 0
+    elif pagina==2: mapa_estados=calcular_mapa_estados(viagens,despesas)
+    else:
+        por_viagem={v["id"]:[] for v in viagens}
+        for despesa in despesas:
+            if despesa["viagem_id"] in por_viagem: por_viagem[despesa["viagem_id"]].append(despesa)
+        consumo=analisar_consumo_mes([(v,por_viagem[v["id"]]) for v in viagens],veiculos=db.listar_veiculos(eid),motoristas=db.listar_motoristas(eid))
+    return render_template("relatorio_mensal.html",empresas=empresas,empresa=empresa,ano=ano,mes=mes,pagina=pagina,dados=dados,consumo=consumo,viagens=viagens,grafico_categorias=grafico_categorias,donut_css=donut_css,historico=historico,mapa_estados=mapa_estados)
 
 @app.route("/cadastros/<tipo>")
 @login_required
@@ -298,6 +304,20 @@ def normalizar_motoristas_publicado():
 def acesso_veiculos():
     empresas,eid,empresa=context()
     return render_template("veiculos.html",empresas=empresas,empresa=empresa,dados=db.listar_veiculos(eid),motoristas=db.listar_motoristas(eid))
+
+@app.post("/normalizar-veiculos")
+@login_required
+def normalizar_veiculos_publicado():
+    empresas,eid,empresa=context()
+    if session["perfil"] != "Administrador":
+        flash("Apenas administradores podem consolidar cadastros.","error")
+    else:
+        antes=len(db.listar_veiculos(eid))
+        consolidar_veiculos(eid,gravar=True)
+        depois=definir_codigos_veiculos(eid,empresa["nome"],gravar=True)
+        db.auditar(session["user_id"],eid,"Consolidação de veículos","Veículo")
+        flash(f"Veículos da {empresa['nome']} normalizados: {antes-depois} duplicidade(s) unificada(s) e {depois} código(s) atualizados.","success")
+    return redirect(url_for("acesso_veiculos"))
 
 @app.post("/cadastros/<tipo>")
 @login_required

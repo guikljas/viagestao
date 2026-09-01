@@ -160,6 +160,9 @@ def listar_despesas(viagem_id=None,empresa_id=None,status=None):
  if empresa_id:q+=" AND v.empresa_id=?";p.append(empresa_id)
  if status:q+=" AND d.status=?";p.append(status)
  return _rows(q+" ORDER BY d.data DESC",p)
+def listar_despesas_periodo(empresa_id,inicio,fim):
+ q="SELECT d.*,v.empresa_id,v.id viagem_numero,m.nome motorista_nome,e.nome empresa_nome FROM despesas d JOIN viagens v ON v.id=d.viagem_id JOIN motoristas m ON m.id=v.motorista_id JOIN empresas e ON e.id=v.empresa_id WHERE v.empresa_id=? AND d.data>=? AND d.data<? ORDER BY d.data DESC"
+ return _rows(q,(empresa_id,inicio,fim))
 def alterar_status_despesa(i,s,m=None):
  c=conectar();c.execute("UPDATE despesas SET status=?,motivo_reprovacao=? WHERE id=?",(s,m,i));c.commit();c.close()
 def anexar_comprovante(despesa_id,nome,caminho,tamanho,usuario_id):
@@ -185,6 +188,8 @@ def excluir_usuario(i):
  c=conectar();c.execute("DELETE FROM usuario_empresas WHERE usuario_id=?",(i,));c.execute("DELETE FROM usuarios WHERE id=?",(i,));c.commit();c.close()
 def listar_cargas(viagem_id=None):
  return _rows("SELECT * FROM cargas"+(" WHERE viagem_id=?" if viagem_id else "")+" ORDER BY data",(viagem_id,) if viagem_id else ())
+def listar_cargas_periodo(empresa_id,inicio,fim):
+ return _rows("SELECT c.* FROM cargas c JOIN viagens v ON v.id=c.viagem_id WHERE v.empresa_id=? AND c.data>=? AND c.data<? ORDER BY c.data",(empresa_id,inicio,fim))
 def criar_carga(**d):
  return _insert_id("INSERT INTO cargas(viagem_id,empresa_cliente,tipo,data,valor,descricao) VALUES(:viagem_id,:empresa_cliente,:tipo,:data,:valor,:descricao)",d)
 def excluir_carga(i):
