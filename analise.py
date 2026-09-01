@@ -4,15 +4,22 @@ Calculos de consumo de combustivel por viagem: km rodado, litros abastecidos
 media do computador de bordo informada na viagem, e custo medio do litro.
 """
 
+import unicodedata
+
 from utils import fmt_numero
 
 LIMIAR_ALERTA_PCT = 10.0  # divergencia >= 10% entre consumo real e painel vira alerta
 LIMIAR_ALERTA_PRECO_PCT = 5.0  # preco pago na viagem >= 5% acima do preco de Assis vira alerta
 
 
+def categoria_chave(valor):
+    texto = unicodedata.normalize("NFKD", valor or "").encode("ascii", "ignore").decode("ascii")
+    return texto.strip().upper().replace(" ", "_")
+
+
 def analisar_viagem(viagem: dict, despesas: list, cargas: list = None) -> dict:
     cargas = cargas or []
-    despesas_combustivel = [d for d in despesas if d["categoria"] == "COMBUSTIVEL"]
+    despesas_combustivel = [d for d in despesas if categoria_chave(d["categoria"]) == "COMBUSTIVEL"]
     total_litros = sum((d["litros"] or 0) for d in despesas_combustivel)
     total_valor_combustivel = sum(d["valor"] for d in despesas_combustivel)
 
@@ -68,7 +75,7 @@ def analisar_viagem(viagem: dict, despesas: list, cargas: list = None) -> dict:
         totais_por_categoria[d["categoria"]] = totais_por_categoria.get(d["categoria"], 0) + d["valor"]
     total_geral = sum(totais_por_categoria.values())
 
-    qtd_sinistros = sum(1 for d in despesas if d["categoria"] == "SINISTRO")
+    qtd_sinistros = sum(1 for d in despesas if categoria_chave(d["categoria"]) == "SINISTRO")
 
     adiantamento = viagem["valor_adiantamento"] or 0
     devolvido = viagem["valor_devolvido"] or 0
@@ -187,20 +194,28 @@ def analisar_mes(despesas_mes: list, cargas_mes: list) -> dict:
     }
 
 
-def analisar_consumo_mes(viagens_com_despesas: list) -> dict:
+def analisar_consumo_mes(viagens_com_despesas: list, veiculos: list = None, motoristas: list = None) -> dict:
     """viagens_com_despesas: lista de tuplas (viagem, despesas_da_viagem) do mes.
     Soma km rodado e litros abastecidos (despesas categoria=COMBUSTIVEL) agrupando
     por veiculo (placa) e por motorista, e calcula a media de consumo (km/L) de
     cada um no mes -- viagens sem hodometro final ou sem litros lancados nao
     entram na conta (nao da pra saber km/litros delas)."""
-    por_veiculo = {}
-    por_motorista = {}
+    # A visão mensal também é um painel de frota: veículos e motoristas sem
+    # consumo no período precisam aparecer, em vez de desaparecer da análise.
+    por_veiculo = {
+        item["placa"]: {"km": 0.0, "litros": 0.0, "viagens": 0, "consumo_medio": None}
+        for item in (veiculos or [])
+    }
+    por_motorista = {
+        item["nome"]: {"km": 0.0, "litros": 0.0, "viagens": 0, "consumo_medio": None}
+        for item in (motoristas or [])
+    }
 
     for viagem, despesas in viagens_com_despesas:
         if viagem["hodometro_fim"] is None:
             continue
         km = viagem["hodometro_fim"] - viagem["hodometro_inicio"]
-        litros = sum((d["litros"] or 0) for d in despesas if d["categoria"] == "COMBUSTIVEL")
+        litros = sum((d["litros"] or 0) for d in despesas if categoria_chave(d["categoria"]) == "COMBUSTIVEL")
         if km <= 0 or litros <= 0:
             continue
 

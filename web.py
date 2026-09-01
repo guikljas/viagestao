@@ -201,7 +201,9 @@ def cargas():
 @login_required
 def excluir_carga(carga_id):
     empresas,eid,empresa=context(); viagem_id=request.form.get("viagem",type=int)
-    if session["perfil"] not in ("Administrador","Gestor","Financeiro"): flash("Você não tem permissão para excluir cargas.","error")
+    carga=db._one("SELECT 1 FROM cargas c JOIN viagens v ON v.id=c.viagem_id WHERE c.id=? AND v.empresa_id=?",(carga_id,eid))
+    if not carga: flash("Carga não encontrada nesta empresa.","error")
+    elif session["perfil"] not in ("Administrador","Gestor","Financeiro"): flash("Você não tem permissão para excluir cargas.","error")
     else: db.excluir_carga(carga_id); db.auditar(session["user_id"],eid,"Exclusão","Carga",carga_id); flash("Carga excluída.","success")
     return redirect(url_for("cargas",viagem=viagem_id))
 
@@ -233,14 +235,14 @@ def consultar_viagens():
 @app.get("/relatorio-mensal")
 @login_required
 def relatorio_mensal():
-    empresas,eid,empresa=context(); hoje=date.today(); ano=request.args.get("ano",hoje.year,type=int); mes=request.args.get("mes",hoje.month,type=int); prefixo=f"{ano:04d}-{mes:02d}"
+    empresas,eid,empresa=context(); hoje=date.today(); ano=max(2020,request.args.get("ano",hoje.year,type=int)); mes=min(12,max(1,request.args.get("mes",hoje.month,type=int))); prefixo=f"{ano:04d}-{mes:02d}"
     viagens=[v for v in viagens_da_empresa(eid) if str(v["data_inicio"]).startswith(prefixo)]
     despesas=[d for d in db.listar_despesas(empresa_id=eid) if str(d["data"]).startswith(prefixo)]
     cargas_mes=[]
     for v in viagens: cargas_mes.extend([c for c in db.listar_cargas(v["id"]) if str(c["data"]).startswith(prefixo)])
     dados=analisar_mes(despesas,cargas_mes)
-    consumo=analisar_consumo_mes([(v,db.listar_despesas(v["id"])) for v in viagens])
-    cores=["#0877c7","#38a7df","#ff8200","#7558c8","#40a77a","#d55b68"]
+    consumo=analisar_consumo_mes([(v,db.listar_despesas(v["id"])) for v in viagens],veiculos=db.listar_veiculos(eid),motoristas=db.listar_motoristas(eid))
+    cores=["#0d5c93","#c61e2d","#4d87b5","#e55261","#59749c","#9e1d31"] if empresa["nome"]=="MARK" else ["#0877c7","#38a7df","#ff8200","#7558c8","#40a77a","#d55b68"]
     por_categoria={}
     for despesa in despesas: por_categoria[despesa["categoria"]]=por_categoria.get(despesa["categoria"],0)+float(despesa["valor"])
     total_categoria=sum(por_categoria.values())
@@ -308,6 +310,7 @@ def cadastrar(tipo):
         elif tipo=="veiculos":
             placa="".join(c for c in request.form["placa"].upper() if c.isalnum())
             if len(placa)!=7: raise ValueError("Informe uma placa válida com 7 caracteres.")
+            if db._one("SELECT 1 FROM veiculos WHERE empresa_id=? AND placa=?",(eid,placa)): raise ValueError("Já existe um veículo com esta placa nesta empresa.")
             db.criar_veiculo(placa=placa,codigo=request.form.get("codigo"),descricao=request.form.get("modelo"),marca=request.form.get("marca"),ano=int(request.form["ano"]) if request.form.get("ano") else None,tipo=request.form.get("tipo"),quilometragem=numero(request.form.get("quilometragem")),status=request.form.get("status","Ativo"),motorista_id=int(request.form["motorista_id"]) if request.form.get("motorista_id") else None,empresa_id=eid)
         else: raise ValueError("Cadastro inválido.")
         flash("Cadastro realizado com sucesso.","success")
@@ -352,6 +355,7 @@ def editar_cadastro(tipo,registro_id):
             elif tipo=="veiculos":
                 placa="".join(c for c in request.form["placa"].upper() if c.isalnum())
                 if len(placa)!=7: raise ValueError("Informe uma placa válida com 7 caracteres.")
+                if db._one("SELECT 1 FROM veiculos WHERE empresa_id=? AND placa=? AND id<>?",(eid,placa,registro_id)): raise ValueError("Já existe um veículo com esta placa nesta empresa.")
                 db.atualizar_veiculo(registro_id,placa=placa,codigo=request.form.get("codigo"),marca=request.form.get("marca"),descricao=request.form.get("modelo"),ano=int(request.form["ano"]) if request.form.get("ano") else None,tipo=request.form.get("tipo"),quilometragem=numero(request.form.get("quilometragem")),motorista_id=int(request.form["motorista_id"]) if request.form.get("motorista_id") else None,status=request.form["status"])
             else: raise ValueError("Cadastro inválido.")
             flash("Cadastro atualizado com sucesso.","success")
