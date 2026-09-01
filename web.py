@@ -134,6 +134,11 @@ def aprovar_despesa(despesa_id):
 def reprovar_despesa(despesa_id):
     return _processar_acao_despesa(despesa_id,"reprovar")
 
+@app.post("/aprovar-despesa")
+@login_required
+def aprovar_despesa_publicada():
+    return _processar_acao_despesa(request.form.get("despesa_id", type=int), "aprovar")
+
 @app.post("/despesas/<int:despesa_id>/excluir")
 @login_required
 def excluir_despesa(despesa_id):
@@ -143,6 +148,11 @@ def excluir_despesa(despesa_id):
     elif session["perfil"] not in ("Administrador","Gestor","Financeiro") and despesa["criado_por"]!=session["user_id"]: flash("Você não pode excluir esta despesa.","error")
     else: db.excluir_despesa(despesa_id); db.auditar(session["user_id"],eid,"Exclusão","Despesa",despesa_id); flash("Despesa excluída.","success")
     return redirect(url_for("despesas"))
+
+@app.post("/excluir-despesa")
+@login_required
+def excluir_despesa_publicada():
+    return excluir_despesa(request.form.get("despesa_id", type=int))
 
 @app.route("/cargas", methods=["GET", "POST"])
 @login_required
@@ -166,6 +176,11 @@ def excluir_carga(carga_id):
     if session["perfil"] not in ("Administrador","Gestor","Financeiro"): flash("Você não tem permissão para excluir cargas.","error")
     else: db.excluir_carga(carga_id); db.auditar(session["user_id"],eid,"Exclusão","Carga",carga_id); flash("Carga excluída.","success")
     return redirect(url_for("cargas",viagem=viagem_id))
+
+@app.post("/excluir-carga")
+@login_required
+def excluir_carga_publicada():
+    return excluir_carga(request.form.get("carga_id", type=int))
 
 @app.get("/consultar-viagens")
 @login_required
@@ -249,6 +264,16 @@ def excluir_cadastro(tipo,registro_id):
         except ValueError as e: flash(str(e),"error")
     return redirect(url_for(rota_cadastro(tipo)))
 
+@app.post("/excluir-motorista")
+@login_required
+def excluir_motorista_publicado():
+    return excluir_cadastro("motoristas", request.form.get("registro_id", type=int))
+
+@app.post("/excluir-veiculo")
+@login_required
+def excluir_veiculo_publicado():
+    return excluir_cadastro("veiculos", request.form.get("registro_id", type=int))
+
 @app.route("/cadastros/<tipo>/<int:registro_id>/editar",methods=["GET","POST"])
 @login_required
 def editar_cadastro(tipo,registro_id):
@@ -268,7 +293,18 @@ def editar_cadastro(tipo,registro_id):
             flash("Cadastro atualizado com sucesso.","success")
         except (ValueError,KeyError) as e: flash(str(e) or "Confira os dados informados.","error")
         return redirect(url_for(rota_cadastro(tipo)))
-    return render_template("editar_cadastro.html",empresas=empresas,empresa=empresa,tipo=tipo,registro=registro,motoristas=db.listar_motoristas(eid))
+    acao_formulario=url_for("editar_motorista_publicado",registro_id=registro_id) if tipo=="motoristas" else url_for("editar_veiculo_publicado",registro_id=registro_id)
+    return render_template("editar_cadastro.html",empresas=empresas,empresa=empresa,tipo=tipo,registro=registro,motoristas=db.listar_motoristas(eid),acao_formulario=acao_formulario)
+
+@app.route("/editar-motorista", methods=["GET","POST"])
+@login_required
+def editar_motorista_publicado():
+    return editar_cadastro("motoristas", request.values.get("registro_id", type=int))
+
+@app.route("/editar-veiculo", methods=["GET","POST"])
+@login_required
+def editar_veiculo_publicado():
+    return editar_cadastro("veiculos", request.values.get("registro_id", type=int))
 
 @app.route("/usuarios",methods=["GET","POST"])
 @login_required
@@ -289,6 +325,11 @@ def excluir_usuario(usuario_id):
     if session["perfil"] != "Administrador" or usuario_id==session["user_id"]: flash("Não é permitido excluir este usuário.","error")
     else: db.excluir_usuario(usuario_id);flash("Usuário excluído.","success")
     return redirect(url_for("usuarios"))
+
+@app.post("/excluir-usuario")
+@login_required
+def excluir_usuario_publicado():
+    return excluir_usuario(request.form.get("usuario_id", type=int))
 
 @app.get("/excel")
 @app.get("/relatorios/excel")
