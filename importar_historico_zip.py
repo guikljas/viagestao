@@ -1,9 +1,9 @@
 """Importa o histórico legado sem duplicar viagens e unifica motoristas.
 
 Uso (PowerShell, com DATABASE_URL do Neon já definida):
-  python importar_historico_zip.py "C:\Users\user\Downloads\despesas_viagem.zip"
+  python importar_historico_zip.py "C:/Users/user/Downloads/despesas_viagem.zip"
 Antes de gravar, confira com:
-  python importar_historico_zip.py "C:\Users\user\Downloads\despesas_viagem.zip" --dry-run
+  python importar_historico_zip.py "C:/Users/user/Downloads/despesas_viagem.zip" --dry-run
 """
 import argparse
 import os
