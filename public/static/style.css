@@ -360,5 +360,6 @@ body.login{display:block}
 .map-detail h3{font-size:20px}
 .map-detail>strong{margin-top:5px;display:block}
 .map-detail>p{min-height:32px}
+.map-layout .map-detail{position:static;width:auto;height:auto;display:block;color:var(--ink);background:#fbfdff;padding:24px}
 @media(max-width:950px){.brazil-map.real-map{min-height:430px}.real-map #brazil-svg{max-height:450px}}
 @media(max-width:600px){.brazil-map.real-map{min-height:330px;padding:8px}.real-map #brazil-svg{max-height:360px}.state-path.selected{transform:translateY(-8px) scale(1.03)}}
