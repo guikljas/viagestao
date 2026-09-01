@@ -7,6 +7,7 @@ import database as db
 from relatorio import gerar_relatorio
 from utils import fmt_placa
 from analise import analisar_consumo_mes, analisar_mes, analisar_viagem
+from importar_historico_zip import consolidar_motoristas, definir_codigos
 
 app = Flask(__name__, static_folder="public", static_url_path="/static")
 app.config.update(SECRET_KEY=os.environ.get("VIAGESTAO_SECRET", "desenvolvimento-local-altere-em-producao"), MAX_CONTENT_LENGTH=10 * 1024 * 1024)
@@ -273,6 +274,22 @@ def cadastros(tipo):
 def acesso_motoristas():
     empresas,eid,empresa=context()
     return render_template("motoristas.html",empresas=empresas,empresa=empresa,dados=db.listar_motoristas(eid))
+
+@app.post("/normalizar-motoristas")
+@login_required
+def normalizar_motoristas_publicado():
+    empresas,eid,empresa=context()
+    if session["perfil"] != "Administrador":
+        flash("Apenas administradores podem consolidar cadastros.","error")
+    elif empresa["nome"] != "MARK":
+        flash("A consolidação solicitada está disponível somente para a MARK.","error")
+    else:
+        antes=len(db.listar_motoristas(eid))
+        consolidar_motoristas(eid,"MARK",gravar=True)
+        depois=definir_codigos(eid,"MARK",gravar=True)
+        db.auditar(session["user_id"],eid,"Consolidação de motoristas","Motorista")
+        flash(f"Cadastros da MARK normalizados: {antes-depois} duplicidade(s) unificada(s) e {depois} código(s) atualizados.","success")
+    return redirect(url_for("acesso_motoristas"))
 
 @app.get("/veiculos")
 @login_required
