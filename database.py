@@ -194,6 +194,7 @@ def inicializar():
     c.execute("UPDATE usuarios SET perfil='Usuário' WHERE perfil NOT IN (?, ?)", PERFIS)
     c.commit()
     c.close()
+    normalizar_placas_conhecidas()
 
 
 def _inicializar_postgres():
@@ -257,6 +258,7 @@ def _inicializar_postgres():
     )
     c.commit()
     c.close()
+    normalizar_placas_conhecidas()
 
 
 def autenticar(email, senha):
@@ -285,15 +287,89 @@ def usuario_tem_empresa(u, e):
 
 
 def listar_usuarios():
-    agregador = (
-        "string_agg(e.nome, ', ')" if USANDO_POSTGRES else "group_concat(e.nome,', ')"
+    """Lista usuários com suas empresas sem depender de agregações do banco.
+
+    ``string_agg`` e ``group_concat`` têm pequenas diferenças entre PostgreSQL
+    e SQLite. Montar a coluna de exibição em Python mantém a tela de usuários
+    compatível com os dois bancos e evita erro 500 em instalações antigas.
+    """
+    usuarios = [dict(item) for item in _rows("SELECT * FROM usuarios ORDER BY nome")]
+    empresas_por_usuario = {item["id"]: [] for item in usuarios}
+    acessos = _rows(
+        "SELECT ue.usuario_id, e.nome "
+        "FROM usuario_empresas ue "
+        "JOIN empresas e ON e.id=ue.empresa_id "
+        "ORDER BY e.nome"
     )
-    return _rows(
-        f"SELECT u.*,{agregador} empresas FROM usuarios u "
-        "LEFT JOIN usuario_empresas ue ON ue.usuario_id=u.id "
-        "LEFT JOIN empresas e ON e.id=ue.empresa_id "
-        "GROUP BY u.id ORDER BY u.nome"
+    for acesso in acessos:
+        empresas_por_usuario.setdefault(acesso["usuario_id"], []).append(acesso["nome"])
+    for usuario in usuarios:
+        usuario["empresas"] = ", ".join(empresas_por_usuario[usuario["id"]])
+    return usuarios
+
+
+PLACAS_CANONICAS = {
+    "RHW2101": "RHW2I01",
+    "RHW2I01": "RHW2I01",
+    "RHW2IO1": "RHW2I01",
+    "SEB": "SEB8D65",
+    "SEB8D65": "SEB8D65",
+}
+
+
+def placa_padrao(placa):
+    """Devolve a placa sem pontuação e com correções conhecidas da frota."""
+    chave = "".join(
+        caractere for caractere in (placa or "").upper() if caractere.isalnum()
     )
+    return PLACAS_CANONICAS.get(chave, chave)
+
+
+def normalizar_placas_conhecidas():
+    """Corrige placas equivalentes e une seus veículos sem perder viagens.
+
+    A viagem passa a apontar para o cadastro com a placa correta quando ele
+    existe. A rotina é idempotente e pode rodar em cada inicialização.
+    """
+    conexao = conectar()
+    try:
+        empresas = conexao.execute("SELECT id FROM empresas").fetchall()
+        for empresa in empresas:
+            empresa_id = empresa["id"]
+            veiculos = conexao.execute(
+                "SELECT * FROM veiculos WHERE empresa_id=?", (empresa_id,)
+            ).fetchall()
+            grupos = {}
+            for veiculo in veiculos:
+                grupos.setdefault(placa_padrao(veiculo["placa"]), []).append(veiculo)
+
+            for placa, itens in grupos.items():
+                if not placa:
+                    continue
+                itens.sort(
+                    key=lambda item: (
+                        0 if item["placa"] == placa else 1,
+                        item["id"],
+                    )
+                )
+                principal = itens[0]
+                conexao.execute(
+                    "UPDATE veiculos SET placa=? WHERE id=?", (placa, principal["id"])
+                )
+                for duplicado in itens[1:]:
+                    conexao.execute(
+                        "UPDATE viagens SET veiculo_id=? WHERE veiculo_id=?",
+                        (principal["id"], duplicado["id"]),
+                    )
+                    conexao.execute(
+                        "DELETE FROM veiculos WHERE id=?", (duplicado["id"],)
+                    )
+        conexao.commit()
+    except Exception:
+        conexao.raw.rollback() if USANDO_POSTGRES else conexao.rollback()
+        raise
+    finally:
+        conexao.close()
 
 
 def obter_usuario(usuario_id):

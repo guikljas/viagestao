@@ -63,7 +63,7 @@ def nome_padrao(empresa, nome):
 
 
 def placa_chave(placa):
-    return "".join(c for c in (placa or "").upper() if c.isalnum())
+    return db.placa_padrao(placa)
 
 
 def consolidar_veiculos(empresa_id, gravar):

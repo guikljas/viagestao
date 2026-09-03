@@ -20,6 +20,12 @@ def fmt_codigo(nome_ou_placa: str, codigo: str = None) -> str:
 def fmt_placa(placa: str, codigo: str = None) -> str:
     """Exibe placas antigas e Mercosul no padrão AAA-1A11, sem mexer no histórico."""
     limpa = "".join(c for c in (placa or "").upper() if c.isalnum())
+    # Correções visuais que também são aplicadas pelo banco ao consolidar frota.
+    limpa = {
+        "RHW2101": "RHW2I01",
+        "RHW2IO1": "RHW2I01",
+        "SEB": "SEB8D65",
+    }.get(limpa, limpa)
     if len(limpa) == 7:
         limpa = f"{limpa[:3]}-{limpa[3:]}"
     return fmt_codigo(limpa or placa or "", codigo)
