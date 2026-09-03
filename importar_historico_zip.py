@@ -10,56 +10,18 @@ import argparse
 import os
 import sqlite3
 import tempfile
-import unicodedata
 import zipfile
 
 import database as db
-
-# Variações encontradas no banco legado que representam a mesma pessoa.
-ALIASES = {
-    "MARK": {
-        "IZAIAS MENEZES DA SILVA": "IZAIAS MENEZES DA SILVA",
-        "JOVENTINO": "JOVENTINO FRANCISCO SANTOS",
-        "JOVENTINO FRANCISCO SANTOS": "JOVENTINO FRANCISCO SANTOS",
-        "LUCAS": "LUCAS FERREIRA DOS SANTOS",
-        "LUCAS FERREIRA": "LUCAS FERREIRA DOS SANTOS",
-        "LUCAS FERREIRA DOS SANTOS": "LUCAS FERREIRA DOS SANTOS",
-        "MICHAEL": "MICHAEL RAFAEL PESSOA DOS SANTOS",
-        "MICHAEL RAFAEL PESSOA DOS SANTOS": "MICHAEL RAFAEL PESSOA DOS SANTOS",
-    },
-    "ERIMAX": {
-        "ANDERSON": "ANDERSON ANTONIO FELIZARDO DE SOUZA",
-        "ANDERSON ANTONIO FELIZARDO DE SOUZA": "ANDERSON ANTONIO FELIZARDO DE SOUZA",
-        "IZAIAS MENEZES DA SILVA": "IZAIAS MENEZES DA SILVA",
-        "LUCAS": "LUCAS FERREIRA DOS SANTOS",
-        "LUCAS FERREIRA": "LUCAS FERREIRA DOS SANTOS",
-        "LUCAS FERREIRA DOS SANTOS": "LUCAS FERREIRA DOS SANTOS",
-        "MAYKON PEREIRA": "MAYKON RODRIGO PEREIRA",
-        "MAYKON RODRIGO PEREIRA": "MAYKON RODRIGO PEREIRA",
-        "NILTON": "NILTON PAZ",
-        "NILTON PAZ": "NILTON PAZ",
-        "THIAGO": "TIAGO CUSTODIO MARTINS",
-        "TIAGO CUSTODIO": "TIAGO CUSTODIO MARTINS",
-        "TIAGO CUSTODIO MARTINS": "TIAGO CUSTODIO MARTINS",
-    },
-}
+from utils import chave_texto, nome_motorista_padrao
 
 
 def texto_chave(valor):
-    valor = (
-        unicodedata.normalize("NFKD", valor or "")
-        .encode("ascii", "ignore")
-        .decode("ascii")
-    )
-    valor = valor.upper().replace("(MANUTENCAO)", "")
-    return " ".join(
-        "".join(c if c.isalnum() or c == " " else " " for c in valor).split()
-    )
+    return chave_texto(valor)
 
 
 def nome_padrao(empresa, nome):
-    chave = texto_chave(nome)
-    return ALIASES.get(empresa, {}).get(chave, chave)
+    return nome_motorista_padrao(empresa, nome)
 
 
 def placa_chave(placa):

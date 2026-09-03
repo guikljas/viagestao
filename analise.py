@@ -6,7 +6,7 @@ media do computador de bordo informada na viagem, e custo medio do litro.
 
 import unicodedata
 
-from utils import fmt_numero
+from utils import fmt_numero, nome_motorista_padrao
 
 LIMIAR_ALERTA_PCT = 10.0  # divergencia >= 10% entre consumo real e painel vira alerta
 LIMIAR_ALERTA_PRECO_PCT = (
@@ -328,7 +328,7 @@ def analisar_consumo_mes(
         dv["litros"] += litros
         dv["viagens"] += 1
 
-        nome = (viagem["motorista_nome"] or "").upper()
+        nome = nome_motorista_padrao(viagem["empresa_nome"], viagem["motorista_nome"])
         dm = por_motorista.setdefault(
             chave_identidade(nome),
             {

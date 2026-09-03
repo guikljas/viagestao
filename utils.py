@@ -1,3 +1,6 @@
+import unicodedata
+
+
 def fmt_data(data_iso: str) -> str:
     """Converte 'AAAA-MM-DD' (formato salvo no banco) para 'DD/MM/AAAA' (exibicao)."""
     if not data_iso:
@@ -55,3 +58,57 @@ def parse_numero(texto: str) -> float:
         raise ValueError(
             f"'{texto}' nao e um numero valido. Use algo como 1000 ou 1000,00."
         )
+
+
+MOTORISTAS_PADRONIZADOS = {
+    "MARK": {
+        "IZAIAS MENEZES DA SILVA": "IZAIAS MENEZES DA SILVA",
+        "JOVENTINO": "JOVENTINO FRANCISCO SANTOS",
+        "JOVENTINO FRANCISCO SANTOS": "JOVENTINO FRANCISCO SANTOS",
+        "LUCAS": "LUCAS FERREIRA DOS SANTOS",
+        "LUCAS FERREIRA": "LUCAS FERREIRA DOS SANTOS",
+        "LUCAS FERREIRA DOS SANTOS": "LUCAS FERREIRA DOS SANTOS",
+        "MICHAEL": "MICHAEL RAFAEL PESSOA DOS SANTOS",
+        "MICHAEL RAFAEL PESSOA DOS SANTOS": "MICHAEL RAFAEL PESSOA DOS SANTOS",
+    },
+    "ERIMAX": {
+        "ANDERSON": "ANDERSON ANTONIO FELIZARDO DE SOUZA",
+        "ANDERSON ANTONIO FELIZARDO DE SOUZA": "ANDERSON ANTONIO FELIZARDO DE SOUZA",
+        "IZAIAS MENEZES DA SILVA": "IZAIAS MENEZES DA SILVA",
+        "LUCAS": "LUCAS FERREIRA DOS SANTOS",
+        "LUCAS FERREIRA": "LUCAS FERREIRA DOS SANTOS",
+        "LUCAS FERREIRA DOS SANTOS": "LUCAS FERREIRA DOS SANTOS",
+        "MAYKON PEREIRA": "MAYKON RODRIGO PEREIRA",
+        "MAYKON RODRIGO PEREIRA": "MAYKON RODRIGO PEREIRA",
+        "NILTON": "NILTON PAZ",
+        "NILTON PAZ": "NILTON PAZ",
+        "THIAGO": "TIAGO CUSTODIO MARTINS",
+        "TIAGO CUSTODIO": "TIAGO CUSTODIO MARTINS",
+        "TIAGO CUSTODIO MARTINS": "TIAGO CUSTODIO MARTINS",
+    },
+}
+
+
+def chave_texto(valor: str) -> str:
+    """Normaliza texto livre para comparação sem acento ou pontuação."""
+    texto = (
+        unicodedata.normalize("NFKD", valor or "")
+        .encode("ascii", "ignore")
+        .decode("ascii")
+    )
+    texto = texto.upper().replace("(MANUTENCAO)", "")
+    return " ".join(
+        "".join(
+            caractere if caractere.isalnum() or caractere == " " else " "
+            for caractere in texto
+        ).split()
+    )
+
+
+def nome_motorista_padrao(empresa: str, nome: str) -> str:
+    """Nome de exibição único para cadastros históricos e planilhas."""
+    empresa = (
+        "ERIMAX" if (empresa or "").upper() == "ERIMAR" else (empresa or "").upper()
+    )
+    chave = chave_texto(nome)
+    return MOTORISTAS_PADRONIZADOS.get(empresa, {}).get(chave, chave)

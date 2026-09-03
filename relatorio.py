@@ -12,7 +12,7 @@ from openpyxl.utils import get_column_letter
 
 import database as db
 from analise import analisar_consumo_mes, analisar_mes, analisar_viagem, categoria_chave
-from utils import fmt_data, fmt_codigo
+from utils import fmt_data, fmt_codigo, nome_motorista_padrao
 
 FUNDO_CABECALHO = PatternFill("solid", fgColor="1F4E78")
 FONTE_CABECALHO = Font(color="FFFFFF", bold=True)
@@ -62,6 +62,14 @@ def _forma_pagamento_excel(valor):
     }.get(_texto_padronizado(valor), valor or "")
 
 
+def _motorista_excel(viagem):
+    """Exibe nomes históricos no mesmo padrão entre MARK e ERIMAX."""
+    return fmt_codigo(
+        nome_motorista_padrao(viagem["empresa_nome"], viagem["motorista_nome"]),
+        viagem["motorista_codigo"],
+    )
+
+
 def gerar_relatorio(empresa_id: int = None, caminho_saida: str = None) -> str:
     viagens = db.listar_viagens(empresa_id=empresa_id)
     despesas_todas = db.listar_despesas(empresa_id=empresa_id)
@@ -106,7 +114,7 @@ def gerar_relatorio(empresa_id: int = None, caminho_saida: str = None) -> str:
         ws1.cell(
             row=linha,
             column=2,
-            value=fmt_codigo(v["motorista_nome"], v["motorista_codigo"]),
+            value=_motorista_excel(v),
         )
         ws1.cell(
             row=linha,
@@ -161,7 +169,7 @@ def gerar_relatorio(empresa_id: int = None, caminho_saida: str = None) -> str:
         ws1b.cell(
             row=linha,
             column=2,
-            value=fmt_codigo(v["motorista_nome"], v["motorista_codigo"]),
+            value=_motorista_excel(v),
         )
         ws1b.cell(
             row=linha,
@@ -237,7 +245,7 @@ def gerar_relatorio(empresa_id: int = None, caminho_saida: str = None) -> str:
         valores = [
             v["id"],
             v["empresa_nome"],
-            fmt_codigo(v["motorista_nome"], v["motorista_codigo"]),
+            _motorista_excel(v),
             fmt_codigo(v["veiculo_placa"], v["veiculo_codigo"]),
             fmt_data(v["data_inicio"]),
             fmt_data(v["data_fim"]) or "(em aberto)",
@@ -396,7 +404,7 @@ def gerar_relatorio(empresa_id: int = None, caminho_saida: str = None) -> str:
         valores = [
             v["id"],
             v["empresa_nome"],
-            fmt_codigo(v["motorista_nome"], v["motorista_codigo"]),
+            _motorista_excel(v),
             fmt_codigo(v["veiculo_placa"], v["veiculo_codigo"]),
             round(a["km_rodado"], 1),
             round(a["total_litros"], 2),
@@ -440,7 +448,7 @@ def gerar_relatorio(empresa_id: int = None, caminho_saida: str = None) -> str:
         valores = [
             v["id"],
             v["empresa_nome"],
-            fmt_codigo(v["motorista_nome"], v["motorista_codigo"]),
+            _motorista_excel(v),
             fmt_codigo(v["veiculo_placa"], v["veiculo_codigo"]),
             round(a["preco_medio_assis"], 2),
             round(a["preco_medio_estrada"], 2),
