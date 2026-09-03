@@ -1009,17 +1009,19 @@ def excluir_usuario_publicado():
 @app.get("/relatorios/excel")
 @login_required
 def exportar_excel():
-    empresas, eid, empresa = context()
+    context()
     # Em funções Vercel apenas /tmp é gravável; localmente também funciona.
     caminho = os.path.join(
         tempfile.gettempdir(),
-        f"relatorio_{empresa['nome'].lower()}_{uuid.uuid4().hex}.xlsx",
+        f"relatorio_corporativo_{uuid.uuid4().hex}.xlsx",
     )
-    gerar_relatorio(empresa_id=eid, caminho_saida=caminho)
+    # O arquivo corporativo sempre combina MARK e ERIMAX. A coluna EMPRESA
+    # presente em cada aba identifica a origem de cada lançamento.
+    gerar_relatorio(empresa_id=None, caminho_saida=caminho)
     return send_file(
         caminho,
         as_attachment=True,
-        download_name=f"relatorio_{empresa['nome'].lower()}.xlsx",
+        download_name="relatorio_corporativo_mark_erimax.xlsx",
     )
 
 

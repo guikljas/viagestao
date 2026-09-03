@@ -482,6 +482,7 @@ def gerar_relatorio(empresa_id: int = None, caminho_saida: str = None) -> str:
     ws5 = wb.create_sheet("Fechamento Mensal")
     colunas5 = [
         "Mes",
+        "Empresa (Frota)",
         "Empresa Atendida",
         "Entrega (R$)",
         "Coleta (R$)",
@@ -500,42 +501,65 @@ def gerar_relatorio(empresa_id: int = None, caminho_saida: str = None) -> str:
         | {c["data"][:7] for c in cargas_escopo}
     )
     for mes in meses:
-        despesas_mes = [d for d in despesas_escopo if d["data"].startswith(mes)]
-        cargas_mes = [c for c in cargas_escopo if c["data"].startswith(mes)]
-        m = analisar_mes(despesas_mes, cargas_mes)
-        if not m["por_empresa"]:
-            ws5.cell(row=linha, column=1, value=mes)
-            ws5.cell(row=linha, column=2, value="(sem cargas lancadas)")
-            ws5.cell(row=linha, column=8, value=round(m["total_despesa_mes"], 2))
-            linha += 1
-            continue
-        for emp, dd in sorted(m["por_empresa"].items(), key=lambda x: -x[1]["total"]):
-            ws5.cell(row=linha, column=1, value=mes)
-            ws5.cell(row=linha, column=2, value=emp)
-            ws5.cell(row=linha, column=3, value=round(dd["entrega"], 2))
-            ws5.cell(row=linha, column=4, value=round(dd["coleta"], 2))
-            ws5.cell(row=linha, column=5, value=round(dd["total"], 2))
-            ws5.cell(
-                row=linha,
-                column=6,
-                value=(
-                    round(dd["despesa_alocada"], 2)
-                    if dd["despesa_alocada"] is not None
-                    else None
-                ),
-            )
-            ws5.cell(
-                row=linha,
-                column=7,
-                value=(
-                    round(dd["percentual_despesa_sobre_receita"], 3)
-                    if dd["percentual_despesa_sobre_receita"] is not None
-                    else None
-                ),
-            )
-            ws5.cell(row=linha, column=8, value=round(m["total_despesa_mes"], 2))
-            linha += 1
-    _autofit(ws5, [10, 22, 14, 14, 14, 16, 18, 22])
+        empresas_mes = {
+            viagens_por_id[d["viagem_id"]]["empresa_nome"]
+            for d in despesas_escopo
+            if d["data"].startswith(mes) and d["viagem_id"] in viagens_por_id
+        } | {
+            viagens_por_id[c["viagem_id"]]["empresa_nome"]
+            for c in cargas_escopo
+            if c["data"].startswith(mes) and c["viagem_id"] in viagens_por_id
+        }
+        for empresa_frota in sorted(empresas_mes):
+            viagens_empresa = {
+                v["id"] for v in viagens if v["empresa_nome"] == empresa_frota
+            }
+            despesas_mes = [
+                d
+                for d in despesas_escopo
+                if d["viagem_id"] in viagens_empresa and d["data"].startswith(mes)
+            ]
+            cargas_mes = [
+                c
+                for c in cargas_escopo
+                if c["viagem_id"] in viagens_empresa and c["data"].startswith(mes)
+            ]
+            m = analisar_mes(despesas_mes, cargas_mes)
+            if not m["por_empresa"]:
+                ws5.cell(row=linha, column=1, value=mes)
+                ws5.cell(row=linha, column=2, value=empresa_frota)
+                ws5.cell(row=linha, column=3, value="(sem cargas lancadas)")
+                ws5.cell(row=linha, column=9, value=round(m["total_despesa_mes"], 2))
+                linha += 1
+                continue
+            for emp, dd in sorted(m["por_empresa"].items(), key=lambda x: -x[1]["total"]):
+                ws5.cell(row=linha, column=1, value=mes)
+                ws5.cell(row=linha, column=2, value=empresa_frota)
+                ws5.cell(row=linha, column=3, value=emp)
+                ws5.cell(row=linha, column=4, value=round(dd["entrega"], 2))
+                ws5.cell(row=linha, column=5, value=round(dd["coleta"], 2))
+                ws5.cell(row=linha, column=6, value=round(dd["total"], 2))
+                ws5.cell(
+                    row=linha,
+                    column=7,
+                    value=(
+                        round(dd["despesa_alocada"], 2)
+                        if dd["despesa_alocada"] is not None
+                        else None
+                    ),
+                )
+                ws5.cell(
+                    row=linha,
+                    column=8,
+                    value=(
+                        round(dd["percentual_despesa_sobre_receita"], 3)
+                        if dd["percentual_despesa_sobre_receita"] is not None
+                        else None
+                    ),
+                )
+                ws5.cell(row=linha, column=9, value=round(m["total_despesa_mes"], 2))
+                linha += 1
+    _autofit(ws5, [10, 16, 22, 14, 14, 14, 16, 18, 22])
     if linha == 2:
         ws5.cell(row=2, column=1, value="Nenhuma despesa ou carga lancada ainda.")
 
@@ -543,6 +567,7 @@ def gerar_relatorio(empresa_id: int = None, caminho_saida: str = None) -> str:
     ws6 = wb.create_sheet("Consumo Mensal")
     colunas6 = [
         "Mes",
+        "Empresa",
         "Tipo",
         "Veiculo/Motorista",
         "Km Rodado",
@@ -555,45 +580,36 @@ def gerar_relatorio(empresa_id: int = None, caminho_saida: str = None) -> str:
     meses_viagens = sorted({v["data_inicio"][:7] for v in viagens})
     for mes in meses_viagens:
         viagens_mes = [v for v in viagens if v["data_inicio"].startswith(mes)]
-        viagens_com_despesas = [(v, despesas_por_viagem[v["id"]]) for v in viagens_mes]
-        consumo = analisar_consumo_mes(viagens_com_despesas)
-        if not consumo["por_veiculo"] and not consumo["por_motorista"]:
-            continue
-        for placa, d in sorted(consumo["por_veiculo"].items()):
-            ws6.cell(row=linha, column=1, value=mes)
-            ws6.cell(row=linha, column=2, value="Veiculo")
-            ws6.cell(row=linha, column=3, value=placa)
-            ws6.cell(row=linha, column=4, value=round(d["km"], 1))
-            ws6.cell(row=linha, column=5, value=round(d["litros"], 2))
-            ws6.cell(
-                row=linha,
-                column=6,
-                value=(
-                    round(d["consumo_medio"], 2)
-                    if d["consumo_medio"] is not None
-                    else None
-                ),
-            )
-            ws6.cell(row=linha, column=7, value=d["viagens"])
-            linha += 1
-        for nome, d in sorted(consumo["por_motorista"].items()):
-            ws6.cell(row=linha, column=1, value=mes)
-            ws6.cell(row=linha, column=2, value="Motorista")
-            ws6.cell(row=linha, column=3, value=nome)
-            ws6.cell(row=linha, column=4, value=round(d["km"], 1))
-            ws6.cell(row=linha, column=5, value=round(d["litros"], 2))
-            ws6.cell(
-                row=linha,
-                column=6,
-                value=(
-                    round(d["consumo_medio"], 2)
-                    if d["consumo_medio"] is not None
-                    else None
-                ),
-            )
-            ws6.cell(row=linha, column=7, value=d["viagens"])
-            linha += 1
-    _autofit(ws6, [10, 12, 20, 14, 14, 18, 12])
+        for empresa_frota in sorted({v["empresa_nome"] for v in viagens_mes}):
+            viagens_com_despesas = [
+                (v, despesas_por_viagem[v["id"]])
+                for v in viagens_mes
+                if v["empresa_nome"] == empresa_frota
+            ]
+            consumo = analisar_consumo_mes(viagens_com_despesas)
+            for tipo, itens in (
+                ("Veiculo", consumo["por_veiculo"]),
+                ("Motorista", consumo["por_motorista"]),
+            ):
+                for nome, d in sorted(itens.items()):
+                    ws6.cell(row=linha, column=1, value=mes)
+                    ws6.cell(row=linha, column=2, value=empresa_frota)
+                    ws6.cell(row=linha, column=3, value=tipo)
+                    ws6.cell(row=linha, column=4, value=nome)
+                    ws6.cell(row=linha, column=5, value=round(d["km"], 1))
+                    ws6.cell(row=linha, column=6, value=round(d["litros"], 2))
+                    ws6.cell(
+                        row=linha,
+                        column=7,
+                        value=(
+                            round(d["consumo_medio"], 2)
+                            if d["consumo_medio"] is not None
+                            else None
+                        ),
+                    )
+                    ws6.cell(row=linha, column=8, value=d["viagens"])
+                    linha += 1
+    _autofit(ws6, [10, 16, 12, 20, 14, 14, 18, 12])
     if linha == 2:
         ws6.cell(
             row=2,
