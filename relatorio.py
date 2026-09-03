@@ -35,6 +35,16 @@ def _autofit(ws, larguras):
         ws.column_dimensions[get_column_letter(i)].width = largura
 
 
+def _aplicar_maiusculas(wb):
+    """Padroniza toda célula textual do arquivo, sem alterar números ou datas."""
+    for ws in wb.worksheets:
+        ws.title = ws.title.upper()
+        for linha in ws.iter_rows():
+            for celula in linha:
+                if isinstance(celula.value, str):
+                    celula.value = celula.value.upper()
+
+
 def _texto_padronizado(valor):
     texto = (
         unicodedata.normalize("NFKD", valor or "")
@@ -605,5 +615,6 @@ def gerar_relatorio(empresa_id: int = None, caminho_saida: str = None) -> str:
             subpasta = "todas"
         caminho_saida = os.path.join(base, "relatorios", subpasta, nome)
     os.makedirs(os.path.dirname(caminho_saida), exist_ok=True)
+    _aplicar_maiusculas(wb)
     wb.save(caminho_saida)
     return caminho_saida
