@@ -9,17 +9,58 @@ import unicodedata
 from utils import fmt_numero
 
 LIMIAR_ALERTA_PCT = 10.0  # divergencia >= 10% entre consumo real e painel vira alerta
-LIMIAR_ALERTA_PRECO_PCT = 5.0  # preco pago na viagem >= 5% acima do preco de Assis vira alerta
+LIMIAR_ALERTA_PRECO_PCT = (
+    5.0  # preco pago na viagem >= 5% acima do preco de Assis vira alerta
+)
+
+CATEGORIAS_EQUIVALENTES = {
+    "COMBUSTIVEL": "COMBUSTIVEL",
+    "COMBUSTIVEIS": "COMBUSTIVEL",
+    "REFEICAO": "REFEICAO",
+    "REFEICOES": "REFEICAO",
+    "ALIMENTACAO": "REFEICAO",
+    "LANCHE": "REFEICAO",
+    "LANCHE_REFEICAO": "REFEICAO",
+    "DIARIA": "DIARIA",
+    "DIARIAS": "DIARIA",
+    "PEDAGIO": "PEDAGIO",
+    "PEDAGIOS": "PEDAGIO",
+    "PECA": "PECA",
+    "PECAS": "PECA",
+    "MANUTENCAO": "PECA",
+    "MANUTENCOES": "PECA",
+    "OUTRA": "OUTROS",
+    "OUTRAS": "OUTROS",
+    "OUTRO": "OUTROS",
+    "SINISTROS": "SINISTRO",
+}
 
 
 def categoria_chave(valor):
-    texto = unicodedata.normalize("NFKD", valor or "").encode("ascii", "ignore").decode("ascii")
-    return texto.strip().upper().replace(" ", "_")
+    texto = (
+        unicodedata.normalize("NFKD", valor or "")
+        .encode("ascii", "ignore")
+        .decode("ascii")
+    )
+    chave = "_".join(texto.strip().upper().split())
+    return CATEGORIAS_EQUIVALENTES.get(chave, chave)
+
+
+def chave_identidade(valor):
+    """Agrupa grafias iguais, inclusive diferenças de caixa e acentuação."""
+    texto = (
+        unicodedata.normalize("NFKD", valor or "")
+        .encode("ascii", "ignore")
+        .decode("ascii")
+    )
+    return "".join(caractere for caractere in texto.upper() if caractere.isalnum())
 
 
 def analisar_viagem(viagem: dict, despesas: list, cargas: list = None) -> dict:
     cargas = cargas or []
-    despesas_combustivel = [d for d in despesas if categoria_chave(d["categoria"]) == "COMBUSTIVEL"]
+    despesas_combustivel = [
+        d for d in despesas if categoria_chave(d["categoria"]) == "COMBUSTIVEL"
+    ]
     total_litros = sum((d["litros"] or 0) for d in despesas_combustivel)
     total_valor_combustivel = sum(d["valor"] for d in despesas_combustivel)
 
@@ -49,8 +90,12 @@ def analisar_viagem(viagem: dict, despesas: list, cargas: list = None) -> dict:
         else:
             feedback = "LITROS DAS NOTAS ACIMA DO ESPERADO (rodou menos km por litro do que o painel indica -- consumo maior que o esperado, possivel desvio, vazamento ou motor fora de ponto)"
 
-    despesas_assis = [d for d in despesas_combustivel if d["local_abastecimento"] == "ASSIS"]
-    despesas_estrada = [d for d in despesas_combustivel if d["local_abastecimento"] == "VIAGEM"]
+    despesas_assis = [
+        d for d in despesas_combustivel if d["local_abastecimento"] == "ASSIS"
+    ]
+    despesas_estrada = [
+        d for d in despesas_combustivel if d["local_abastecimento"] == "VIAGEM"
+    ]
     litros_assis = sum((d["litros"] or 0) for d in despesas_assis)
     valor_assis = sum(d["valor"] for d in despesas_assis)
     litros_estrada = sum((d["litros"] or 0) for d in despesas_estrada)
@@ -63,7 +108,9 @@ def analisar_viagem(viagem: dict, despesas: list, cargas: list = None) -> dict:
     feedback_preco = "SEM DADOS SUFICIENTES PRA COMPARAR (falta abastecimento marcado como Assis ou como viagem)"
     alerta_preco = False
     if preco_medio_assis and preco_medio_estrada:
-        diferenca_preco_pct = ((preco_medio_estrada - preco_medio_assis) / preco_medio_assis) * 100
+        diferenca_preco_pct = (
+            (preco_medio_estrada - preco_medio_assis) / preco_medio_assis
+        ) * 100
         if diferenca_preco_pct <= LIMIAR_ALERTA_PRECO_PCT:
             feedback_preco = "PRECO PAGO NA VIAGEM DENTRO DO PRATICADO EM ASSIS"
         else:
@@ -72,18 +119,27 @@ def analisar_viagem(viagem: dict, despesas: list, cargas: list = None) -> dict:
 
     totais_por_categoria = {}
     for d in despesas:
-        totais_por_categoria[d["categoria"]] = totais_por_categoria.get(d["categoria"], 0) + d["valor"]
+        categoria = categoria_chave(d["categoria"])
+        totais_por_categoria[categoria] = (
+            totais_por_categoria.get(categoria, 0) + d["valor"]
+        )
     total_geral = sum(totais_por_categoria.values())
 
-    qtd_sinistros = sum(1 for d in despesas if categoria_chave(d["categoria"]) == "SINISTRO")
+    qtd_sinistros = sum(
+        1 for d in despesas if categoria_chave(d["categoria"]) == "SINISTRO"
+    )
 
     adiantamento = viagem["valor_adiantamento"] or 0
     devolvido = viagem["valor_devolvido"] or 0
-    saldo = adiantamento - devolvido - total_geral  # esperado: 0 (adiantamento = gasto + devolvido)
+    saldo = (
+        adiantamento - devolvido - total_geral
+    )  # esperado: 0 (adiantamento = gasto + devolvido)
     if adiantamento == 0 and devolvido == 0:
         feedback_adiantamento = "SEM ADIANTAMENTO REGISTRADO"
     elif abs(saldo) < 0.01:
-        feedback_adiantamento = "ADIANTAMENTO CONFERE (gasto + devolvido = adiantamento)"
+        feedback_adiantamento = (
+            "ADIANTAMENTO CONFERE (gasto + devolvido = adiantamento)"
+        )
     elif saldo > 0:
         feedback_adiantamento = f"FALTA PRESTAR CONTAS: R$ {fmt_numero(saldo)} do adiantamento nao aparece em despesas nem foi devolvido"
     else:
@@ -114,12 +170,18 @@ def analisar_viagem(viagem: dict, despesas: list, cargas: list = None) -> dict:
     # rateio -- so as cargas lancadas por "Lancar Carga" tem empresa conhecida.
     for emp, d in cargas_por_empresa.items():
         d["total"] = d["entrega"] + d["coleta"]
-        d["percentual_receita"] = (d["total"] / total_cargas * 100) if total_cargas else None
-        d["custo_alocado"] = (total_geral * d["total"] / total_cargas) if total_cargas else None
+        d["percentual_receita"] = (
+            (d["total"] / total_cargas * 100) if total_cargas else None
+        )
+        d["custo_alocado"] = (
+            (total_geral * d["total"] / total_cargas) if total_cargas else None
+        )
 
     receita_total = total_cargas + valor_nf_ida + valor_nf_retorno
 
-    percentual_custo_receita = (total_geral / receita_total * 100) if receita_total else None
+    percentual_custo_receita = (
+        (total_geral / receita_total * 100) if receita_total else None
+    )
 
     return {
         "adiantamento": adiantamento,
@@ -178,13 +240,21 @@ def analisar_mes(despesas_mes: list, cargas_mes: list) -> dict:
     # empresa e o percentual que a despesa representa sobre a receita dela.
     for emp, d in por_empresa.items():
         d["total"] = d["entrega"] + d["coleta"]
-        d["percentual_receita"] = (d["total"] / total_receita_mes * 100) if total_receita_mes else None
-        d["despesa_alocada"] = (total_despesa_mes * d["total"] / total_receita_mes) if total_receita_mes else None
+        d["percentual_receita"] = (
+            (d["total"] / total_receita_mes * 100) if total_receita_mes else None
+        )
+        d["despesa_alocada"] = (
+            (total_despesa_mes * d["total"] / total_receita_mes)
+            if total_receita_mes
+            else None
+        )
         d["percentual_despesa_sobre_receita"] = (
-            d["despesa_alocada"] / d["total"] * 100
-        ) if d["total"] else None
+            (d["despesa_alocada"] / d["total"] * 100) if d["total"] else None
+        )
 
-    percentual_despesa_sobre_receita_total = (total_despesa_mes / total_receita_mes * 100) if total_receita_mes else None
+    percentual_despesa_sobre_receita_total = (
+        (total_despesa_mes / total_receita_mes * 100) if total_receita_mes else None
+    )
 
     return {
         "total_despesa_mes": total_despesa_mes,
@@ -194,7 +264,9 @@ def analisar_mes(despesas_mes: list, cargas_mes: list) -> dict:
     }
 
 
-def analisar_consumo_mes(viagens_com_despesas: list, veiculos: list = None, motoristas: list = None) -> dict:
+def analisar_consumo_mes(
+    viagens_com_despesas: list, veiculos: list = None, motoristas: list = None
+) -> dict:
     """viagens_com_despesas: lista de tuplas (viagem, despesas_da_viagem) do mes.
     Soma km rodado e litros abastecidos (despesas categoria=COMBUSTIVEL) agrupando
     por veiculo (placa) e por motorista, e calcula a media de consumo (km/L) de
@@ -202,31 +274,71 @@ def analisar_consumo_mes(viagens_com_despesas: list, veiculos: list = None, moto
     entram na conta (nao da pra saber km/litros delas)."""
     # A visão mensal também é um painel de frota: veículos e motoristas sem
     # consumo no período precisam aparecer, em vez de desaparecer da análise.
-    por_veiculo = {
-        item["placa"]: {"km": 0.0, "litros": 0.0, "viagens": 0, "consumo_medio": None}
-        for item in (veiculos or [])
-    }
-    por_motorista = {
-        item["nome"]: {"km": 0.0, "litros": 0.0, "viagens": 0, "consumo_medio": None}
-        for item in (motoristas or [])
-    }
+    por_veiculo = {}
+    por_motorista = {}
+
+    for item in veiculos or []:
+        por_veiculo.setdefault(
+            chave_identidade(item["placa"]),
+            {
+                "nome": item["placa"],
+                "km": 0.0,
+                "litros": 0.0,
+                "viagens": 0,
+                "consumo_medio": None,
+            },
+        )
+    for item in motoristas or []:
+        nome = (item["nome"] or "").upper()
+        por_motorista.setdefault(
+            chave_identidade(nome),
+            {
+                "nome": nome,
+                "km": 0.0,
+                "litros": 0.0,
+                "viagens": 0,
+                "consumo_medio": None,
+            },
+        )
 
     for viagem, despesas in viagens_com_despesas:
         if viagem["hodometro_fim"] is None:
             continue
         km = viagem["hodometro_fim"] - viagem["hodometro_inicio"]
-        litros = sum((d["litros"] or 0) for d in despesas if categoria_chave(d["categoria"]) == "COMBUSTIVEL")
+        litros = sum(
+            (d["litros"] or 0)
+            for d in despesas
+            if categoria_chave(d["categoria"]) == "COMBUSTIVEL"
+        )
         if km <= 0 or litros <= 0:
             continue
 
         placa = viagem["veiculo_placa"]
-        dv = por_veiculo.setdefault(placa, {"km": 0.0, "litros": 0.0, "viagens": 0})
+        dv = por_veiculo.setdefault(
+            chave_identidade(placa),
+            {
+                "nome": placa,
+                "km": 0.0,
+                "litros": 0.0,
+                "viagens": 0,
+                "consumo_medio": None,
+            },
+        )
         dv["km"] += km
         dv["litros"] += litros
         dv["viagens"] += 1
 
-        nome = viagem["motorista_nome"]
-        dm = por_motorista.setdefault(nome, {"km": 0.0, "litros": 0.0, "viagens": 0})
+        nome = (viagem["motorista_nome"] or "").upper()
+        dm = por_motorista.setdefault(
+            chave_identidade(nome),
+            {
+                "nome": nome,
+                "km": 0.0,
+                "litros": 0.0,
+                "viagens": 0,
+                "consumo_medio": None,
+            },
+        )
         dm["km"] += km
         dm["litros"] += litros
         dm["viagens"] += 1
@@ -236,25 +348,57 @@ def analisar_consumo_mes(viagens_com_despesas: list, veiculos: list = None, moto
     for d in por_motorista.values():
         d["consumo_medio"] = (d["km"] / d["litros"]) if d["litros"] else None
 
-    return {"por_veiculo": por_veiculo, "por_motorista": por_motorista}
+    def exibir(registros):
+        retorno = {}
+        for dados in registros.values():
+            nome = dados.pop("nome")
+            retorno[nome] = dados
+        return dict(sorted(retorno.items()))
+
+    return {
+        "por_veiculo": exibir(por_veiculo),
+        "por_motorista": exibir(por_motorista),
+    }
 
 
 def analisar_frota_historica(viagens_com_despesas: list, veiculos: list) -> list:
     """Consolida todos os lançamentos já registrados por veículo."""
     frota = {
-        item["id"]: {"placa": item["placa"], "codigo": item["codigo"], "viagens": 0,
-                     "km": 0.0, "litros": 0.0, "despesas": 0.0, "consumo_medio": None}
+        item["id"]: {
+            "placa": item["placa"],
+            "codigo": item["codigo"],
+            "viagens": 0,
+            "km": 0.0,
+            "litros": 0.0,
+            "despesas": 0.0,
+            "consumo_medio": None,
+        }
         for item in veiculos
     }
     for viagem, despesas in viagens_com_despesas:
-        item = frota.setdefault(viagem["veiculo_id"], {"placa": viagem["veiculo_placa"], "codigo": viagem["veiculo_codigo"], "viagens": 0, "km": 0.0, "litros": 0.0, "despesas": 0.0, "consumo_medio": None})
+        item = frota.setdefault(
+            viagem["veiculo_id"],
+            {
+                "placa": viagem["veiculo_placa"],
+                "codigo": viagem["veiculo_codigo"],
+                "viagens": 0,
+                "km": 0.0,
+                "litros": 0.0,
+                "despesas": 0.0,
+                "consumo_medio": None,
+            },
+        )
         item["viagens"] += 1
         item["despesas"] += sum(float(d["valor"]) for d in despesas)
         if viagem["hodometro_fim"] is not None:
             km = float(viagem["hodometro_fim"]) - float(viagem["hodometro_inicio"])
             if km > 0:
                 item["km"] += km
-        item["litros"] += sum(float(d["litros"] or 0) for d in despesas if categoria_chave(d["categoria"]) == "COMBUSTIVEL")
+        item["litros"] += sum(
+            float(d["litros"] or 0)
+            for d in despesas
+            if categoria_chave(d["categoria"]) == "COMBUSTIVEL"
+        )
     for item in frota.values():
         item["consumo_medio"] = item["km"] / item["litros"] if item["litros"] else None
     return sorted(frota.values(), key=lambda item: item["despesas"], reverse=True)

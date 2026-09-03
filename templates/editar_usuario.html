@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+
+{% block content %}
+  <div class="page-title">
+    <div>
+      <span class="eyebrow">ADMINISTRAÇÃO</span>
+      <h1>Editar usuário</h1>
+    </div>
+    <a class="button light" href="{{ url_for('usuarios') }}">Voltar</a>
+  </div>
+
+  <section class="panel">
+    <p class="section-intro">Atualize os dados, o perfil, o acesso às empresas e, se necessário, defina uma nova senha.</p>
+    <form method="post" class="grid">
+      <label>
+        Nome
+        <input name="nome" value="{{ usuario.nome }}" required>
+      </label>
+      <label>
+        E-mail
+        <input name="email" type="email" value="{{ usuario.email }}" required>
+      </label>
+      <label>
+        Perfil
+        <select name="perfil">
+          {% for perfil in perfis %}
+            <option value="{{ perfil }}" {% if usuario.perfil == perfil %}selected{% endif %}>{{ perfil }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        Nova senha <small>(deixe em branco para manter a atual)</small>
+        <input name="senha" type="password" minlength="8" autocomplete="new-password">
+      </label>
+      <label class="wide">
+        Empresas com acesso
+        <div class="check-list">
+          {% for item in empresas %}
+            <label><input type="checkbox" name="empresas" value="{{ item.id }}" {% if item.id in empresas_atribuidas %}checked{% endif %}> {{ item.nome }}</label>
+          {% endfor %}
+        </div>
+      </label>
+      <label class="wide check-list">
+        <input type="checkbox" name="ativo" value="1" {% if usuario.ativo %}checked{% endif %}>
+        Usuário ativo e autorizado a entrar na plataforma
+      </label>
+      <div class="wide form-actions">
+        <button class="button">Salvar alterações</button>
+      </div>
+    </form>
+  </section>
+{% endblock %}

@@ -46,4 +46,6 @@ def parse_numero(texto: str) -> float:
     try:
         return float(texto)
     except ValueError:
-        raise ValueError(f"'{texto}' nao e um numero valido. Use algo como 1000 ou 1000,00.")
+        raise ValueError(
+            f"'{texto}' nao e um numero valido. Use algo como 1000 ou 1000,00."
+        )
