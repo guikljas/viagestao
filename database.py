@@ -714,11 +714,20 @@ def atualizar_veiculo(i, **d):
 
 
 def excluir_usuario(i):
+    """Remove o acesso sem apagar despesas e outros registros históricos."""
     c = conectar()
-    c.execute("DELETE FROM usuario_empresas WHERE usuario_id=?", (i,))
-    c.execute("DELETE FROM usuarios WHERE id=?", (i,))
-    c.commit()
-    c.close()
+    try:
+        # A coluna é uma chave estrangeira: desvincular mantém a despesa, mas
+        # permite remover o usuário que a lançou sem causar erro 500.
+        c.execute("UPDATE despesas SET criado_por=NULL WHERE criado_por=?", (i,))
+        c.execute("DELETE FROM usuario_empresas WHERE usuario_id=?", (i,))
+        c.execute("DELETE FROM usuarios WHERE id=?", (i,))
+        c.commit()
+    except Exception:
+        c.raw.rollback() if USANDO_POSTGRES else c.rollback()
+        raise
+    finally:
+        c.close()
 
 
 def listar_cargas(viagem_id=None):

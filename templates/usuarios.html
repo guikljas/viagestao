@@ -29,7 +29,14 @@
           <tr>
             <td>{{ item.nome }}</td><td>{{ item.email }}</td><td><span class="status">{{ item.perfil }}</span></td><td>{{ item.empresas or '—' }}</td>
             <td><span class="status {% if item.ativo %}aprovada{% else %}reprovada{% endif %}">{{ 'Ativo' if item.ativo else 'Inativo' }}</span></td>
-            <td class="actions"><a class="button small" href="{{ url_for('editar_usuario', usuario_id=item.id) }}">Editar</a>{% if item.id != session.user_id %}<form method="post" action="{{ url_for('excluir_usuario_publicado') }}" onsubmit="return confirm('Excluir este usuário?')"><input type="hidden" name="usuario_id" value="{{ item.id }}"><button class="danger small">Excluir</button></form>{% endif %}</td>
+            <td class="actions">
+              <a class="button small" href="{{ url_for('editar_usuario', usuario_id=item.id, empresa=empresa.id) }}">Editar</a>
+              {% if item.id != session.user_id %}
+                <form method="post" action="{{ url_for('excluir_usuario', usuario_id=item.id, empresa=empresa.id) }}" onsubmit="return confirm('Excluir este usuário?')">
+                  <button class="danger small">Excluir</button>
+                </form>
+              {% endif %}
+            </td>
           </tr>
         {% else %}
           <tr><td colspan="6">Nenhum usuário cadastrado.</td></tr>
