@@ -1,1 +1,21 @@
-{% extends 'base.html' %}{% block content %}<div class="page-title"><div><span class="eyebrow">RELATÓRIOS</span><h1>Central de exportação</h1><p>O download gera um único relatório corporativo, reunindo MARK e ERIMAX.</p></div></div><section class="panel export-panel"><span class="eyebrow">ARQUIVO COMPLETO</span><h3>Relatório operacional consolidado em Excel</h3><p>Inclui despesas, cargas, viagens, consumo e alertas das duas empresas. Todos os textos são exportados em MAIÚSCULAS e cada linha traz a empresa de origem.</p><a class="button" href="/excel">⇩ Baixar relatório corporativo (.xlsx)</a></section>{% endblock %}
+{% extends 'base.html' %}
+
+{% block content %}
+    <div class="page-title">
+        <div>
+            <span class="eyebrow">RELATÓRIOS</span>
+            <h1>Central de exportação</h1>
+            <p>O download gera um único relatório corporativo, reunindo MARK e ERIMAX.</p>
+        </div>
+    </div>
+
+    <section class="panel export-panel">
+        <span class="eyebrow">ARQUIVO COMPLETO</span>
+        <h3>Relatório operacional consolidado em Excel</h3>
+        <p>
+            Inclui despesas, cargas, viagens, consumo e alertas das duas empresas.
+            Todos os textos são exportados em MAIÚSCULAS e cada linha traz a empresa de origem.
+        </p>
+        <a class="button" href="/excel">⇩ Baixar relatório corporativo (.xlsx)</a>
+    </section>
+{% endblock %}

@@ -532,7 +532,9 @@ def gerar_relatorio(empresa_id: int = None, caminho_saida: str = None) -> str:
                 ws5.cell(row=linha, column=9, value=round(m["total_despesa_mes"], 2))
                 linha += 1
                 continue
-            for emp, dd in sorted(m["por_empresa"].items(), key=lambda x: -x[1]["total"]):
+            for emp, dd in sorted(
+                m["por_empresa"].items(), key=lambda x: -x[1]["total"]
+            ):
                 ws5.cell(row=linha, column=1, value=mes)
                 ws5.cell(row=linha, column=2, value=empresa_frota)
                 ws5.cell(row=linha, column=3, value=emp)

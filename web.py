@@ -54,9 +54,14 @@ def login_required(f):
 
 def context():
     empresas = db.listar_empresas(session["user_id"])
-    empresa_id = int(
-        request.args.get("empresa", session.get("empresa_id", empresas[0]["id"]))
-    )
+    if not empresas:
+        session.clear()
+        abort(403)
+
+    empresa_padrao = session.get("empresa_id", empresas[0]["id"])
+    empresa_id = request.args.get("empresa", empresa_padrao, type=int)
+    if empresa_id is None:
+        empresa_id = empresa_padrao
     if not db.usuario_tem_empresa(session["user_id"], empresa_id):
         empresa_id = empresas[0]["id"]
     session["empresa_id"] = empresa_id
@@ -84,7 +89,9 @@ def rota_cadastro(tipo):
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        user = db.autenticar(request.form["email"], request.form["senha"])
+        user = db.autenticar(
+            request.form.get("email", ""), request.form.get("senha", "")
+        )
         if user:
             session.clear()
             session.update(user_id=user["id"], nome=user["nome"], perfil=user["perfil"])
@@ -408,9 +415,9 @@ def excluir_despesa_publicada():
 def cargas():
     empresas, eid, empresa = context()
     viagens = viagens_da_empresa(eid)
-    viagem_id = request.args.get("viagem", type=int) or (
-        viagens[0]["id"] if viagens else None
-    )
+    viagem_id = request.args.get("viagem", type=int)
+    if not any(viagem["id"] == viagem_id for viagem in viagens):
+        viagem_id = viagens[0]["id"] if viagens else None
     if request.method == "POST":
         try:
             viagem_id = int(request.form["viagem"])

@@ -5,6 +5,7 @@ Uso seguro (primeiro apenas confere):
 Depois de revisar o resumo:
   python normalizar_motoristas.py --empresa MARK --confirmar
 """
+
 import argparse
 
 import database as db
@@ -12,7 +13,9 @@ from importar_historico_zip import consolidar_motoristas, definir_codigos, nome_
 
 
 def obter_empresa(nome):
-    empresa = next((item for item in db.listar_empresas() if item["nome"] == nome), None)
+    empresa = next(
+        (item for item in db.listar_empresas() if item["nome"] == nome), None
+    )
     if not empresa:
         raise SystemExit(f"Empresa {nome} não encontrada no banco.")
     return empresa
@@ -27,7 +30,9 @@ def grupos_duplicados(empresa_id, empresa):
 
 def executar(nome_empresa, gravar):
     if not db.USANDO_POSTGRES:
-        raise SystemExit("Defina DATABASE_URL do Neon antes de executar. Nenhum dado foi alterado.")
+        raise SystemExit(
+            "Defina DATABASE_URL do Neon antes de executar. Nenhum dado foi alterado."
+        )
     db.inicializar()
     empresa = obter_empresa(nome_empresa)
     duplicados = grupos_duplicados(empresa["id"], nome_empresa)
@@ -40,15 +45,23 @@ def executar(nome_empresa, gravar):
             nomes = ", ".join(f"#{item['id']} {item['nome']}" for item in itens)
             print(f"- {padrao}: {nomes}")
     else:
-        print("Não há duplicidades conhecidas; somente caixa alta e códigos serão ajustados.")
-    quantidade_prevista = quantidade_antes - sum(len(itens) - 1 for itens in duplicados.values())
+        print(
+            "Não há duplicidades conhecidas; somente caixa alta e códigos serão ajustados."
+        )
+    quantidade_prevista = quantidade_antes - sum(
+        len(itens) - 1 for itens in duplicados.values()
+    )
     consolidar_motoristas(empresa["id"], nome_empresa, gravar=gravar)
     if gravar:
         quantidade_depois = definir_codigos(empresa["id"], nome_empresa, gravar=True)
         prefixo = "MK" if nome_empresa == "MARK" else "ERX"
-        print(f"Concluído: {quantidade_depois} motoristas mantidos e códigos {prefixo}-### atualizados.")
+        print(
+            f"Concluído: {quantidade_depois} motoristas mantidos e códigos {prefixo}-### atualizados."
+        )
     else:
-        print(f"Simulação concluída: {quantidade_prevista} motoristas permanecerão. Execute novamente com --confirmar para gravar.")
+        print(
+            f"Simulação concluída: {quantidade_prevista} motoristas permanecerão. Execute novamente com --confirmar para gravar."
+        )
 
 
 if __name__ == "__main__":
