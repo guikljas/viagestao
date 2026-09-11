@@ -599,9 +599,16 @@ def exportar_relatorio_mensal_pptx():
         flash("Não há dados no período selecionado para gerar uma apresentação.", "error")
         return redirect(url_for("relatorio_mensal", ano=ano, mes=mes, pagina=1))
 
-    arquivo = gerar_relatorio_powerpoint(empresa["nome"], relatorio)
+    transicao = request.args.get("transicao", "fade").lower()
+    if transicao not in ("fade", "morph"):
+        transicao = "fade"
+
+    arquivo = gerar_relatorio_powerpoint(
+        empresa["nome"], relatorio, transicao=transicao
+    )
+    sufixo = "_Morph" if transicao == "morph" else ""
     nome = (
-        f"Relatorio_Mensal_{empresa['nome']}_{relatorio['nome_mes']}_{ano}.pptx"
+        f"Relatorio_Mensal_{empresa['nome']}_{relatorio['nome_mes']}_{ano}{sufixo}.pptx"
     )
     return send_file(
         arquivo,

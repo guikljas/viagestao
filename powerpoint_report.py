@@ -3,12 +3,15 @@
 from io import BytesIO
 from pathlib import Path
 
+from lxml import etree
 from pptx import Presentation
 from pptx.chart.data import CategoryChartData
 from pptx.dml.color import RGBColor
 from pptx.enum.chart import XL_CHART_TYPE, XL_LABEL_POSITION
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
+from pptx.oxml.ns import qn
+from pptx.oxml.xmlchemy import OxmlElement
 from pptx.util import Inches, Pt
 
 
@@ -113,6 +116,75 @@ def _novo_slide(apresentacao, empresa, titulo=None, subtitulo=None):
     return slide
 
 
+def _adicionar_transicao_fade(slide):
+    """Inclui a transição Fade padrão do formato Open XML.
+
+    ``python-pptx`` ainda não expõe transições na API pública. O elemento
+    ``p:fade`` é uma transição oficial e simples do PowerPoint; por isso é
+    seguro adicioná-lo sem recorrer ao Morph, que depende de extensões de
+    versão e pode falhar em outros leitores de PPTX.
+    """
+    raiz = slide._element
+    for filho in list(raiz):
+        if filho.tag == qn("p:transition"):
+            raiz.remove(filho)
+
+    transicao = OxmlElement("p:transition")
+    transicao.set("spd", "med")
+    transicao.set("advClick", "1")
+    transicao.append(OxmlElement("p:fade"))
+
+    indice = len(raiz)
+    for posicao, filho in enumerate(raiz):
+        if filho.tag in (qn("p:timing"), qn("p:extLst")):
+            indice = posicao
+            break
+    raiz.insert(indice, transicao)
+
+
+def _adicionar_transicao_morph(slide):
+    """Adiciona Morph com fallback oficial para Fade.
+
+    O PowerPoint armazena Morph como uma extensão Office 2015 dentro de
+    ``mc:AlternateContent``. Programas que não conhecem essa extensão leem o
+    fallback ``p:fade`` e continuam abrindo o arquivo normalmente.
+    """
+    raiz = slide._element
+    for filho in list(raiz):
+        if filho.tag == qn("p:transition"):
+            raiz.remove(filho)
+
+    xml = b"""
+        <mc:AlternateContent
+            xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+            xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+            <mc:Choice
+                xmlns:p159="http://schemas.microsoft.com/office/powerpoint/2015/09/main"
+                Requires="p159">
+                <p:transition
+                    xmlns:p14="http://schemas.microsoft.com/office/powerpoint/2010/main"
+                    spd="med"
+                    p14:dur="650"
+                    advClick="1">
+                    <p159:morph option="byObject"/>
+                </p:transition>
+            </mc:Choice>
+            <mc:Fallback>
+                <p:transition spd="med" advClick="1">
+                    <p:fade/>
+                </p:transition>
+            </mc:Fallback>
+        </mc:AlternateContent>
+    """
+    conteudo_alternativo = etree.fromstring(xml)
+    indice = len(raiz)
+    for posicao, filho in enumerate(raiz):
+        if filho.tag in (qn("p:timing"), qn("p:extLst")):
+            indice = posicao
+            break
+    raiz.insert(indice, conteudo_alternativo)
+
+
 def _card(slide, titulo, valor, esquerda, topo, largura, empresa, destaque=False):
     identidade = IDENTIDADES[empresa]
     cor = identidade["primaria"] if destaque else "FFFFFF"
@@ -198,13 +270,20 @@ def _capa(apresentacao, empresa, relatorio):
     _texto(slide, empresa, 1.02, 2.0, 8.2, 0.9, 39, "FFFFFF", True)
     _texto(slide, f"{relatorio['nome_mes']} de {relatorio['ano']}", 1.02, 3.03, 7.0, 0.48, 23, "FFFFFF")
     _texto(slide, "Controle de despesas de viagem", 1.02, 3.73, 6.8, 0.3, 13, "DDEEFF")
+    _caixa(slide, 1.02, 4.35, 2.8, 0.58, identidade["secundaria"])
+    _texto(slide, "VIA GESTÃO", 1.24, 4.47, 2.36, 0.2, 10, "FFFFFF", True, PP_ALIGN.CENTER)
+
+    # O painel claro evita que o azul escuro da logo desapareça no fundo
+    # institucional, tanto para ERIMAX quanto para MARK.
+    _caixa(slide, 8.85, 1.22, 3.75, 1.82, "FFFFFF")
+    _caixa(slide, 8.85, 1.22, 3.75, 0.1, identidade["secundaria"], raio=False)
     logo = _logo(empresa)
     if logo.exists():
-        slide.shapes.add_picture(str(logo), Inches(9.15), Inches(1.38), width=Inches(3.0))
+        slide.shapes.add_picture(str(logo), Inches(9.16), Inches(1.58), width=Inches(3.12))
     _texto(slide, "ViaGestão", 1.02, 6.67, 2.0, 0.25, 10, "DDEEFF", True)
 
 
-def gerar_relatorio_powerpoint(empresa, relatorio):
+def gerar_relatorio_powerpoint(empresa, relatorio, transicao="fade"):
     """Cria um PPTX 16:9 em memória, com gráficos editáveis no PowerPoint."""
     empresa = empresa.upper()
     if empresa not in IDENTIDADES:
@@ -414,6 +493,12 @@ def gerar_relatorio_powerpoint(empresa, relatorio):
     logo = _logo(empresa)
     if logo.exists():
         encerramento.shapes.add_picture(str(logo), Inches(9.25), Inches(1.82), width=Inches(2.8))
+
+    for indice, slide in enumerate(apresentacao.slides):
+        if transicao == "morph" and indice > 0:
+            _adicionar_transicao_morph(slide)
+        else:
+            _adicionar_transicao_fade(slide)
 
     arquivo = BytesIO()
     apresentacao.save(arquivo)

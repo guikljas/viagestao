@@ -30,6 +30,13 @@
         >
             Exportar para PowerPoint (.pptx)
         </a>
+
+        <a
+            class="button"
+            href="{{ url_for('exportar_relatorio_mensal_pptx', ano=ano, mes=mes, empresa=empresa.id, transicao='morph') }}"
+        >
+            Testar transição Morph (.pptx)
+        </a>
     </form>
 </section>
 
