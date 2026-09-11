@@ -283,7 +283,7 @@ def _capa(apresentacao, empresa, relatorio):
     _texto(slide, "ViaGestão", 1.02, 6.67, 2.0, 0.25, 10, "DDEEFF", True)
 
 
-def gerar_relatorio_powerpoint(empresa, relatorio, transicao="fade"):
+def gerar_relatorio_powerpoint(empresa, relatorio, transicao="morph"):
     """Cria um PPTX 16:9 em memória, com gráficos editáveis no PowerPoint."""
     empresa = empresa.upper()
     if empresa not in IDENTIDADES:
@@ -487,12 +487,17 @@ def gerar_relatorio_powerpoint(empresa, relatorio, transicao="fade"):
     identidade = IDENTIDADES[empresa]
     encerramento.background.fill.solid()
     encerramento.background.fill.fore_color.rgb = _rgb(identidade["primaria"])
-    _texto(encerramento, "Relatório Mensal", 1.05, 2.08, 7.3, 0.6, 31, "FFFFFF", True)
-    _texto(encerramento, empresa, 1.05, 2.86, 7.3, 0.42, 20, "DDEEFF", True)
-    _texto(encerramento, f"{relatorio['nome_mes']} de {relatorio['ano']}", 1.05, 3.45, 7.3, 0.35, 16, "FFFFFF")
+    _caixa(encerramento, 0, 0, 0.18, ALTURA, identidade["secundaria"], raio=False)
+    _texto(encerramento, "RELATÓRIO MENSAL", 1.05, 1.72, 7.3, 0.32, 15, "DDEEFF", True)
+    _texto(encerramento, empresa, 1.05, 2.18, 7.3, 0.62, 31, "FFFFFF", True)
+    _texto(encerramento, f"{relatorio['nome_mes']} de {relatorio['ano']}", 1.05, 3.02, 7.3, 0.35, 17, "FFFFFF")
+    _texto(encerramento, "ViaGestão", 1.05, 5.85, 2.0, 0.25, 10, "DDEEFF", True)
+
+    _caixa(encerramento, 8.85, 1.62, 3.75, 1.82, "FFFFFF")
+    _caixa(encerramento, 8.85, 1.62, 3.75, 0.1, identidade["secundaria"], raio=False)
     logo = _logo(empresa)
     if logo.exists():
-        encerramento.shapes.add_picture(str(logo), Inches(9.25), Inches(1.82), width=Inches(2.8))
+        encerramento.shapes.add_picture(str(logo), Inches(9.16), Inches(1.98), width=Inches(3.12))
 
     for indice, slide in enumerate(apresentacao.slides):
         if transicao == "morph" and indice > 0:

@@ -599,9 +599,9 @@ def exportar_relatorio_mensal_pptx():
         flash("Não há dados no período selecionado para gerar uma apresentação.", "error")
         return redirect(url_for("relatorio_mensal", ano=ano, mes=mes, pagina=1))
 
-    transicao = request.args.get("transicao", "fade").lower()
+    transicao = request.args.get("transicao", "morph").lower()
     if transicao not in ("fade", "morph"):
-        transicao = "fade"
+        transicao = "morph"
 
     arquivo = gerar_relatorio_powerpoint(
         empresa["nome"], relatorio, transicao=transicao
