@@ -30,6 +30,8 @@ from importar_historico_zip import (
     definir_codigos_veiculos,
 )
 from mapa_estados import calcular_mapa_estados
+from relatorio_mensal_dados import obter_dados_relatorio_mensal
+from powerpoint_report import gerar_relatorio_powerpoint
 
 app = Flask(__name__, static_folder="public", static_url_path="/static")
 app.config.update(
@@ -535,48 +537,23 @@ def relatorio_mensal():
     ano = max(2020, request.args.get("ano", hoje.year, type=int))
     mes = min(12, max(1, request.args.get("mes", hoje.month, type=int)))
     pagina = min(3, max(1, request.args.get("pagina", 1, type=int)))
-    inicio_mes = date(ano, mes, 1)
-    fim_mes = date(ano + 1, 1, 1) if mes == 12 else date(ano, mes + 1, 1)
-    viagens = [
-        v
-        for v in viagens_da_empresa(eid)
-        if inicio_mes.isoformat() <= str(v["data_inicio"]) < fim_mes.isoformat()
-    ]
-    despesas = db.listar_despesas_periodo(
-        eid, inicio_mes.isoformat(), fim_mes.isoformat()
+    relatorio = obter_dados_relatorio_mensal(eid, ano, mes)
+    dados = relatorio["dados"]
+    viagens = relatorio["viagens"]
+    despesas = relatorio["despesas"]
+    consumo = relatorio["consumo"]
+    grafico_categorias = relatorio["categorias"]
+    cores = (
+        ["#0d5c93", "#c61e2d", "#4d87b5", "#e55261", "#59749c", "#9e1d31"]
+        if empresa["nome"] == "MARK"
+        else ["#0877c7", "#38a7df", "#ff8200", "#7558c8", "#40a77a", "#d55b68"]
     )
-    cargas_mes = db.listar_cargas_periodo(
-        eid, inicio_mes.isoformat(), fim_mes.isoformat()
-    )
-    dados = analisar_mes(despesas, cargas_mes)
-    consumo = {"por_veiculo": {}, "por_motorista": {}}
-    grafico_categorias = []
+    for indice, item in enumerate(grafico_categorias):
+        item["cor"] = cores[indice % len(cores)]
     donut_css = "conic-gradient(#e6edf4 0 100%)"
-    historico = []
+    historico = relatorio["historico"]
     mapa_estados = {}
     if pagina == 1:
-        cores = (
-            ["#0d5c93", "#c61e2d", "#4d87b5", "#e55261", "#59749c", "#9e1d31"]
-            if empresa["nome"] == "MARK"
-            else ["#0877c7", "#38a7df", "#ff8200", "#7558c8", "#40a77a", "#d55b68"]
-        )
-        por_categoria = {}
-        for despesa in despesas:
-            por_categoria[despesa["categoria"]] = por_categoria.get(
-                despesa["categoria"], 0
-            ) + float(despesa["valor"])
-        total_categoria = sum(por_categoria.values())
-        grafico_categorias = [
-            {
-                "nome": nome,
-                "valor": valor,
-                "percentual": (valor / total_categoria * 100 if total_categoria else 0),
-                "cor": cores[i % len(cores)],
-            }
-            for i, (nome, valor) in enumerate(
-                sorted(por_categoria.items(), key=lambda item: item[1], reverse=True)
-            )
-        ]
         fatias = []
         acumulado = 0
         for item in grafico_categorias:
@@ -584,34 +561,6 @@ def relatorio_mensal():
             fatias.append(f"{item['cor']} {acumulado:.2f}% {fim:.2f}%")
             acumulado = fim
         donut_css = "conic-gradient(" + ", ".join(fatias) + ")" if fatias else donut_css
-        indice = ano * 12 + (mes - 1) - 5
-        inicio_historico = date(indice // 12, indice % 12 + 1, 1)
-        despesas_historico = db.listar_despesas_periodo(
-            eid, inicio_historico.isoformat(), fim_mes.isoformat()
-        )
-        cargas_historico = db.listar_cargas_periodo(
-            eid, inicio_historico.isoformat(), fim_mes.isoformat()
-        )
-        for deslocamento in range(5, -1, -1):
-            indice = ano * 12 + (mes - 1) - deslocamento
-            ano_item = indice // 12
-            mes_item = indice % 12 + 1
-            prefixo = f"{ano_item:04d}-{mes_item:02d}"
-            historico.append(
-                {
-                    "rotulo": f"{mes_item:02d}/{ano_item}",
-                    "despesa": sum(
-                        float(d["valor"])
-                        for d in despesas_historico
-                        if str(d["data"]).startswith(prefixo)
-                    ),
-                    "receita": sum(
-                        float(c["valor"])
-                        for c in cargas_historico
-                        if str(c["data"]).startswith(prefixo)
-                    ),
-                }
-            )
         maior = max([x["despesa"] for x in historico] + [1])
         for item in historico:
             item["altura"] = (
@@ -619,16 +568,6 @@ def relatorio_mensal():
             )
     elif pagina == 2:
         mapa_estados = calcular_mapa_estados(viagens, despesas)
-    else:
-        por_viagem = {v["id"]: [] for v in viagens}
-        for despesa in despesas:
-            if despesa["viagem_id"] in por_viagem:
-                por_viagem[despesa["viagem_id"]].append(despesa)
-        consumo = analisar_consumo_mes(
-            [(v, por_viagem[v["id"]]) for v in viagens],
-            veiculos=db.listar_veiculos(eid),
-            motoristas=db.listar_motoristas(eid),
-        )
     return render_template(
         "relatorio_mensal.html",
         empresas=empresas,
@@ -643,6 +582,32 @@ def relatorio_mensal():
         donut_css=donut_css,
         historico=historico,
         mapa_estados=mapa_estados,
+    )
+
+
+@app.get("/relatorio-mensal/exportar-pptx")
+@login_required
+def exportar_relatorio_mensal_pptx():
+    """Baixa um relatório executivo da empresa ativa no período selecionado."""
+    empresas, eid, empresa = context()
+    hoje = date.today()
+    ano = max(2020, request.args.get("ano", hoje.year, type=int))
+    mes = min(12, max(1, request.args.get("mes", hoje.month, type=int)))
+    relatorio = obter_dados_relatorio_mensal(eid, ano, mes)
+
+    if not (relatorio["viagens"] or relatorio["despesas"] or relatorio["cargas"]):
+        flash("Não há dados no período selecionado para gerar uma apresentação.", "error")
+        return redirect(url_for("relatorio_mensal", ano=ano, mes=mes, pagina=1))
+
+    arquivo = gerar_relatorio_powerpoint(empresa["nome"], relatorio)
+    nome = (
+        f"Relatorio_Mensal_{empresa['nome']}_{relatorio['nome_mes']}_{ano}.pptx"
+    )
+    return send_file(
+        arquivo,
+        as_attachment=True,
+        download_name=nome,
+        mimetype="application/vnd.openxmlformats-officedocument.presentationml.presentation",
     )
 
 
