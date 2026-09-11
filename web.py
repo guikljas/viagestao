@@ -291,6 +291,10 @@ def excluir_viagem():
 def despesas():
     empresas, eid, empresa = context()
     viagens = db.listar_viagens(eid)
+    viagem_id = request.args.get("viagem", type=int)
+    if not any(x["id"] == viagem_id for x in viagens):
+        viagem_id = viagens[0]["id"] if viagens else None
+
     if request.method == "POST":
         try:
             viagem_id = int(request.form["viagem"])
@@ -313,13 +317,15 @@ def despesas():
             flash("Despesa enviada para aprovação.", "success")
         except (ValueError, KeyError):
             flash("Confira os dados da despesa.", "error")
-        return redirect(url_for("despesas"))
+        return redirect(url_for("despesas", viagem=viagem_id))
+
     return render_template(
         "despesas.html",
         empresas=empresas,
         empresa=empresa,
-        despesas=db.listar_despesas(empresa_id=eid),
+        despesas=db.listar_despesas(viagem_id=viagem_id) if viagem_id else [],
         viagens=viagens,
+        viagem_id=viagem_id,
         categorias=[
             "COMBUSTIVEL",
             "PEDAGIO",
@@ -330,6 +336,8 @@ def despesas():
             "MANUTENCAO",
             "LAVAGEM",
             "TRANSPORTE",
+            "ARLA",
+            "CHAPA",
             "OUTRAS",
         ],
         hoje=date.today().isoformat(),
@@ -361,7 +369,7 @@ def _processar_acao_despesa(despesa_id, acao):
         flash("Despesa reprovada.", "success")
     else:
         flash("Ação de despesa inválida.", "error")
-    return redirect(url_for("despesas"))
+    return redirect(url_for("despesas", viagem=request.form.get("viagem", type=int)))
 
 
 @app.post("/despesas/aprovar/<int:despesa_id>")
@@ -401,7 +409,7 @@ def excluir_despesa(despesa_id):
         db.excluir_despesa(despesa_id)
         db.auditar(session["user_id"], eid, "Exclusão", "Despesa", despesa_id)
         flash("Despesa excluída.", "success")
-    return redirect(url_for("despesas"))
+    return redirect(url_for("despesas", viagem=request.form.get("viagem", type=int)))
 
 
 @app.post("/excluir-despesa")
@@ -416,7 +424,7 @@ def cargas():
     empresas, eid, empresa = context()
     viagens = viagens_da_empresa(eid)
     viagem_id = request.args.get("viagem", type=int)
-    if not any(viagem["id"] == viagem_id for viagem in viagens):
+    if not any(x["id"] == viagem_id for x in viagens):
         viagem_id = viagens[0]["id"] if viagens else None
     if request.method == "POST":
         try:
@@ -443,6 +451,12 @@ def cargas():
         viagens=viagens,
         viagem_id=viagem_id,
         cargas=db.listar_cargas(viagem_id),
+        clientes=sorted(
+            set(
+                ["ERIMAX", "ERIMAR", "ERIMED", "MARK", "INVICTO", "MAX", "RF"]
+                + db.listar_clientes_cargas(eid)
+            )
+        ),
         hoje=date.today().isoformat(),
     )
 

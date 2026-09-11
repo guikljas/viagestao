@@ -16,6 +16,8 @@ CATEGORIAS = [
     "Manutenção",
     "Lavagem",
     "Transporte",
+    "Arla",
+    "Chapa",
     "Outras",
 ]
 STATUS_DESPESA = ["Rascunho", "Pendente", "Aprovada", "Reprovada", "Paga", "Cancelada"]
@@ -745,6 +747,20 @@ def listar_cargas_empresa(empresa_id):
         "WHERE v.empresa_id=? ORDER BY c.data DESC",
         (empresa_id,),
     )
+
+
+def listar_clientes_cargas(empresa_id):
+    """Retorna clientes já usados pela empresa, para sugeri-los no lançamento."""
+    return [
+        item["empresa_cliente"]
+        for item in _rows(
+            "SELECT DISTINCT c.empresa_cliente FROM cargas c "
+            "JOIN viagens v ON v.id=c.viagem_id "
+            "WHERE v.empresa_id=? AND TRIM(c.empresa_cliente)<>'' "
+            "ORDER BY c.empresa_cliente",
+            (empresa_id,),
+        )
+    ]
 
 
 def listar_cargas_periodo(empresa_id, inicio, fim):
