@@ -31,7 +31,6 @@ from importar_historico_zip import (
 )
 from mapa_estados import calcular_mapa_estados
 from relatorio_mensal_dados import obter_dados_relatorio_mensal
-from powerpoint_report import gerar_relatorio_powerpoint
 
 app = Flask(__name__, static_folder="public", static_url_path="/static")
 app.config.update(
@@ -603,9 +602,21 @@ def exportar_relatorio_mensal_pptx():
     if transicao not in ("fade", "morph"):
         transicao = "morph"
 
-    arquivo = gerar_relatorio_powerpoint(
-        empresa["nome"], relatorio, transicao=transicao
-    )
+    try:
+        # Mantém o restante do sistema disponível mesmo se o ambiente de
+        # hospedagem ainda estiver instalando a dependência de PowerPoint.
+        from powerpoint_report import gerar_relatorio_powerpoint
+
+        arquivo = gerar_relatorio_powerpoint(
+            empresa["nome"], relatorio, transicao=transicao
+        )
+    except ModuleNotFoundError:
+        flash(
+            "O módulo de PowerPoint ainda não está disponível no servidor. "
+            "Tente novamente após a conclusão do deploy.",
+            "error",
+        )
+        return redirect(url_for("relatorio_mensal", ano=ano, mes=mes, pagina=1))
     sufixo = "_Morph" if transicao == "morph" else ""
     nome = (
         f"Relatorio_Mensal_{empresa['nome']}_{relatorio['nome_mes']}_{ano}{sufixo}.pptx"
