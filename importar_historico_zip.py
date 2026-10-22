@@ -39,6 +39,14 @@ def consolidar_veiculos(empresa_id, gravar):
         for placa, itens in grupos.items():
             itens.sort(
                 key=lambda item: (
+                    0
+                    if "".join(
+                        caractere
+                        for caractere in (item["placa"] or "").upper()
+                        if caractere.isalnum()
+                    )
+                    == placa
+                    else 1,
                     -len([v for v in viagens if v["veiculo_id"] == item["id"]]),
                     item["id"],
                 )
@@ -62,6 +70,10 @@ def consolidar_veiculos(empresa_id, gravar):
                         motorista_principal = duplicado["motorista_id"]
                     con.execute(
                         "UPDATE viagens SET veiculo_id=? WHERE veiculo_id=?",
+                        (principal["id"], duplicado["id"]),
+                    )
+                    con.execute(
+                        "UPDATE despesas_gerais SET veiculo_id=? WHERE veiculo_id=?",
                         (principal["id"], duplicado["id"]),
                     )
                     con.execute("DELETE FROM veiculos WHERE id=?", (duplicado["id"],))

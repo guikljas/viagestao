@@ -198,6 +198,7 @@ def inicializar():
     c.commit()
     c.close()
     normalizar_placas_conhecidas()
+    normalizar_clientes_rateio_conhecidos()
 
 
 def _inicializar_postgres():
@@ -263,6 +264,7 @@ def _inicializar_postgres():
     c.commit()
     c.close()
     normalizar_placas_conhecidas()
+    normalizar_clientes_rateio_conhecidos()
 
 
 def autenticar(email, senha):
@@ -318,6 +320,8 @@ PLACAS_CANONICAS = {
     "RHW2IO1": "RHW2I01",
     "SEB": "SEB8D65",
     "SEB8D65": "SEB8D65",
+    "SEU5D39": "SEU5H39",
+    "SEU5H39": "SEU5H39",
 }
 
 
@@ -352,7 +356,14 @@ def normalizar_placas_conhecidas():
                     continue
                 itens.sort(
                     key=lambda item: (
-                        0 if item["placa"] == placa else 1,
+                        0
+                        if "".join(
+                            caractere
+                            for caractere in (item["placa"] or "").upper()
+                            if caractere.isalnum()
+                        )
+                        == placa
+                        else 1,
                         item["id"],
                     )
                 )
@@ -366,8 +377,34 @@ def normalizar_placas_conhecidas():
                         (principal["id"], duplicado["id"]),
                     )
                     conexao.execute(
+                        "UPDATE despesas_gerais SET veiculo_id=? WHERE veiculo_id=?",
+                        (principal["id"], duplicado["id"]),
+                    )
+                    conexao.execute(
                         "DELETE FROM veiculos WHERE id=?", (duplicado["id"],)
                     )
+        conexao.commit()
+    except Exception:
+        conexao.raw.rollback() if USANDO_POSTGRES else conexao.rollback()
+        raise
+    finally:
+        conexao.close()
+
+
+def normalizar_clientes_rateio_conhecidos():
+    """Une grafias já validadas, sem misturar clientes de outras frotas."""
+    conexao = conectar()
+    try:
+        mark = conexao.execute(
+            "SELECT id FROM empresas WHERE upper(nome)='MARK'"
+        ).fetchone()
+        if mark:
+            conexao.execute(
+                "UPDATE cargas SET empresa_cliente='RF' "
+                "WHERE viagem_id IN (SELECT id FROM viagens WHERE empresa_id=?) "
+                "AND upper(trim(empresa_cliente)) IN ('RF', 'RF LEITE')",
+                (mark["id"],),
+            )
         conexao.commit()
     except Exception:
         conexao.raw.rollback() if USANDO_POSTGRES else conexao.rollback()
