@@ -11,7 +11,13 @@ from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 
 import database as db
-from analise import analisar_consumo_mes, analisar_mes, analisar_viagem, categoria_chave
+from analise import (
+    analisar_consumo_mes,
+    analisar_mes,
+    analisar_viagem,
+    calcular_rateio_custos_gerais,
+    categoria_chave,
+)
 from utils import fmt_data, fmt_codigo, nome_motorista_padrao
 
 FUNDO_CABECALHO = PatternFill("solid", fgColor="1F4E78")
@@ -83,6 +89,7 @@ def _motorista_excel(viagem):
 def gerar_relatorio(empresa_id: int = None, caminho_saida: str = None) -> str:
     viagens = db.listar_viagens(empresa_id=empresa_id)
     despesas_todas = db.listar_despesas(empresa_id=empresa_id)
+    custos_gerais = db.listar_despesas_gerais(empresa_id=empresa_id)
     cargas_todas = (
         db.listar_cargas_empresa(empresa_id)
         if empresa_id is not None
@@ -201,7 +208,68 @@ def gerar_relatorio(empresa_id: int = None, caminho_saida: str = None) -> str:
         linha += 1
     _autofit(ws1b, [14, 20, 12, 30, 20, 10, 12, 12, 35])
 
-    # --- Aba 3: Resumo por Viagem ---
+    # --- Aba 3: custos de frota sem viagem e o rateio de frete ---
+    ws1c = wb.create_sheet("Custos Gerais Rateados")
+    colunas1c = [
+        "Empresa (frota)",
+        "Data",
+        "Categoria",
+        "Veículo",
+        "Fornecedor",
+        "Descrição",
+        "Valor do Custo (R$)",
+        "Empresa Atendida",
+        "Frete no Período (R$)",
+        "Participação no Frete (%)",
+        "Custo Rateado (R$)",
+    ]
+    _cabecalho(ws1c, colunas1c)
+    linha = 2
+    for custo in custos_gerais:
+        periodo = str(custo["data"])[:7]
+        cargas_periodo = [
+            carga
+            for carga in cargas_todas
+            if str(carga["data"]).startswith(periodo)
+            and carga["viagem_id"] in viagens_por_id
+            and viagens_por_id[carga["viagem_id"]]["empresa_id"] == custo["empresa_id"]
+        ]
+        rateio = calcular_rateio_custos_gerais([custo], cargas_periodo)
+        parcelas = rateio["lancamentos"][0]["parcelas"]
+        if not parcelas:
+            parcelas = [
+                {
+                    "empresa": "SEM FRETE NO PERÍODO",
+                    "frete": None,
+                    "percentual": None,
+                    "valor": None,
+                }
+            ]
+        fretes = {item["empresa"]: item["frete"] for item in rateio["por_empresa"]}
+        for parcela in parcelas:
+            valores = [
+                custo["empresa_nome"],
+                fmt_data(custo["data"]),
+                custo["categoria"],
+                fmt_codigo(custo["veiculo_placa"], custo["veiculo_codigo"]),
+                custo["estabelecimento"] or "",
+                custo["descricao"] or "",
+                round(float(custo["valor"]), 2),
+                parcela["empresa"],
+                fretes.get(parcela["empresa"]),
+                (
+                    round(parcela["percentual"], 3)
+                    if parcela["percentual"] is not None
+                    else None
+                ),
+                parcela["valor"],
+            ]
+            for coluna, valor in enumerate(valores, 1):
+                ws1c.cell(row=linha, column=coluna, value=valor)
+            linha += 1
+    _autofit(ws1c, [16, 12, 16, 14, 24, 35, 18, 22, 20, 24, 19])
+
+    # --- Aba 4: Resumo por Viagem ---
     ws2 = wb.create_sheet("Resumo por Viagem")
     colunas2 = [
         "Viagem",

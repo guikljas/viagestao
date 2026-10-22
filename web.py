@@ -22,6 +22,7 @@ from analise import (
     analisar_mes,
     analisar_viagem,
     analisar_frota_historica,
+    calcular_rateio_custos_gerais,
 )
 from importar_historico_zip import (
     consolidar_motoristas,
@@ -121,7 +122,10 @@ def logout():
 def dashboard():
     empresas, eid, empresa = context()
     resumo = db.resumo_dashboard(eid)
-    despesas = resumo["despesas"]
+    despesas = list(resumo["despesas"]) + [
+        {**dict(item), "categoria": f"CUSTO GERAL · {item['categoria']}"}
+        for item in resumo["despesas_gerais"]
+    ]
     categories = {}
     for x in despesas:
         categories[x["categoria"]] = categories.get(x["categoria"], 0) + x["valor"]
@@ -130,6 +134,7 @@ def dashboard():
     frota_historica = analisar_frota_historica(
         [(viagem, db.listar_despesas(viagem["id"])) for viagem in todas_viagens],
         veiculos,
+        resumo["despesas_gerais"],
     )
     return render_template(
         "dashboard.html",
@@ -141,6 +146,88 @@ def dashboard():
     )
 
 
+@app.route("/rateio-custos", methods=["GET", "POST"])
+@app.route("/manutencoes", methods=["GET", "POST"])
+@login_required
+def manutencoes():
+    """Custos gerais de frota, rateados pelas cargas do mês."""
+    empresas, eid, empresa = context()
+    hoje = date.today()
+    ano = max(2020, request.args.get("ano", hoje.year, type=int))
+    mes = min(12, max(1, request.args.get("mes", hoje.month, type=int)))
+    veiculos = db.listar_veiculos(eid)
+
+    if request.method == "POST":
+        try:
+            veiculo_id = request.form.get("veiculo", type=int)
+            if veiculo_id and not any(item["id"] == veiculo_id for item in veiculos):
+                raise ValueError
+            data_lancamento = request.form["data"]
+            categoria = request.form["categoria"].strip().upper()
+            if categoria not in {"MANUTENÇÃO", "SEGURO", "PEDÁGIO", "IPVA", "MULTA"}:
+                raise ValueError
+            identificador = db.criar_despesa_geral(
+                empresa_id=eid,
+                veiculo_id=veiculo_id,
+                categoria=categoria,
+                data=data_lancamento,
+                valor=numero(request.form["valor"]),
+                descricao=request.form.get("descricao"),
+                estabelecimento=request.form.get("estabelecimento"),
+                forma_pagamento=request.form.get("forma"),
+                criado_por=session["user_id"],
+            )
+            db.auditar(session["user_id"], eid, "Criação", "Custo geral", identificador)
+            flash("Custo geral registrado. O rateio foi recalculado com os fretes do mês.", "success")
+            data_retorno = date.fromisoformat(data_lancamento)
+            return redirect(url_for("manutencoes", ano=data_retorno.year, mes=data_retorno.month))
+        except (TypeError, ValueError, KeyError):
+            flash("Confira os dados da manutenção.", "error")
+            return redirect(url_for("manutencoes", ano=ano, mes=mes))
+
+    inicio = date(ano, mes, 1)
+    fim = date(ano + 1, 1, 1) if mes == 12 else date(ano, mes + 1, 1)
+    despesas_gerais = db.listar_despesas_gerais_periodo(
+        eid, inicio.isoformat(), fim.isoformat()
+    )
+    cargas_periodo = db.listar_cargas_periodo(eid, inicio.isoformat(), fim.isoformat())
+    rateio = calcular_rateio_custos_gerais(despesas_gerais, cargas_periodo)
+    return render_template(
+        "manutencoes.html",
+        empresas=empresas,
+        empresa=empresa,
+        ano=ano,
+        mes=mes,
+        hoje=hoje.isoformat(),
+        veiculos=veiculos,
+        despesas_gerais=despesas_gerais,
+        rateio=rateio,
+    )
+
+
+@app.post("/manutencoes/<int:despesa_id>/excluir")
+@login_required
+def excluir_manutencao(despesa_id):
+    empresas, eid, empresa = context()
+    despesa = next(
+        (item for item in db.listar_despesas_gerais(eid) if item["id"] == despesa_id),
+        None,
+    )
+    if not despesa:
+        flash("Custo geral não encontrado nesta empresa.", "error")
+    elif session["perfil"] != "Administrador" and despesa["criado_por"] != session["user_id"]:
+        flash("Você não pode excluir este custo geral.", "error")
+    else:
+        db.excluir_despesa_geral(despesa_id)
+        db.auditar(session["user_id"], eid, "Exclusão", "Custo geral", despesa_id)
+        flash("Custo geral excluído.", "success")
+    return redirect(
+        url_for(
+            "manutencoes",
+            ano=request.form.get("ano", type=int),
+            mes=request.form.get("mes", type=int),
+        )
+    )
 @app.route("/viagens", methods=["GET", "POST"])
 @login_required
 def viagens():
@@ -566,7 +653,7 @@ def relatorio_mensal():
                 max(4, round(item["despesa"] / maior * 100)) if item["despesa"] else 0
             )
     elif pagina == 2:
-        mapa_estados = calcular_mapa_estados(viagens, despesas)
+        mapa_estados = calcular_mapa_estados(viagens, relatorio["despesas_viagem"])
     return render_template(
         "relatorio_mensal.html",
         empresas=empresas,
@@ -581,6 +668,8 @@ def relatorio_mensal():
         donut_css=donut_css,
         historico=historico,
         mapa_estados=mapa_estados,
+        manutencoes=relatorio["manutencoes"],
+        rateio_custos_gerais=relatorio["rateio_custos_gerais"],
     )
 
 

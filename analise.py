@@ -56,6 +56,84 @@ def chave_identidade(valor):
     return "".join(caractere for caractere in texto.upper() if caractere.isalnum())
 
 
+def nome_empresa_rateio(valor):
+    """Padroniza a empresa atendida para o cálculo não dividir grafias iguais."""
+    texto = (
+        unicodedata.normalize("NFKD", valor or "")
+        .encode("ascii", "ignore")
+        .decode("ascii")
+    )
+    texto = " ".join(texto.upper().split())
+    return {
+        "ERIMAR": "ERIMAX",
+        "ERIMAX INDUSTRIA": "ERIMAX",
+        "COMERCIAL MARK": "MARK",
+    }.get(texto, texto or "NÃO INFORMADA")
+
+
+def calcular_rateio_custos_gerais(despesas_gerais, cargas):
+    """Divide custos gerais da frota conforme o frete de cada empresa atendida.
+
+    O cálculo é feito para o período selecionado: cada empresa recebe a mesma
+    proporção que representa no total de entregas e coletas. O último centavo
+    é ajustado na última parcela para que a soma sempre seja exatamente igual
+    ao valor lançado da manutenção.
+    """
+    fretes = {}
+    for carga in cargas:
+        registro = dict(carga)
+        empresa = nome_empresa_rateio(registro.get("empresa_cliente"))
+        fretes[empresa] = fretes.get(empresa, 0.0) + float(registro.get("valor") or 0)
+
+    total_fretes = sum(fretes.values())
+    empresas = sorted(fretes)
+    por_empresa = {
+        empresa: {
+            "empresa": empresa,
+            "frete": fretes[empresa],
+            "percentual": (fretes[empresa] / total_fretes * 100) if total_fretes else 0.0,
+            "custo_rateado": 0.0,
+        }
+        for empresa in empresas
+    }
+    lancamentos = []
+
+    for despesa in despesas_gerais:
+        registro = dict(despesa)
+        valor = round(float(registro.get("valor") or 0), 2)
+        parcelas = []
+        acumulado = 0.0
+        for indice, empresa in enumerate(empresas):
+            if indice == len(empresas) - 1:
+                parcela = round(valor - acumulado, 2)
+            else:
+                parcela = round(valor * fretes[empresa] / total_fretes, 2)
+                acumulado += parcela
+            parcelas.append(
+                {
+                    "empresa": empresa,
+                    "percentual": por_empresa[empresa]["percentual"],
+                    "valor": parcela,
+                }
+            )
+            por_empresa[empresa]["custo_rateado"] += parcela
+        lancamentos.append({**registro, "parcelas": parcelas})
+
+    for item in por_empresa.values():
+        item["frete"] = round(item["frete"], 2)
+        item["custo_rateado"] = round(item["custo_rateado"], 2)
+
+    return {
+        "total_custos": round(
+            sum(float(dict(item).get("valor") or 0) for item in despesas_gerais), 2
+        ),
+        "total_fretes": round(total_fretes, 2),
+        "tem_base_rateio": bool(total_fretes),
+        "por_empresa": list(por_empresa.values()),
+        "lancamentos": lancamentos,
+    }
+
+
 def analisar_viagem(viagem: dict, despesas: list, cargas: list = None) -> dict:
     cargas = cargas or []
     despesas_combustivel = [
@@ -154,7 +232,7 @@ def analisar_viagem(viagem: dict, despesas: list, cargas: list = None) -> dict:
 
     cargas_por_empresa = {}
     for c in cargas:
-        emp = c["empresa_cliente"]
+        emp = nome_empresa_rateio(c["empresa_cliente"])
         d = cargas_por_empresa.setdefault(emp, {"entrega": 0.0, "coleta": 0.0})
         if c["tipo"] == "ENTREGA":
             d["entrega"] += c["valor"]
@@ -225,7 +303,7 @@ def analisar_mes(despesas_mes: list, cargas_mes: list) -> dict:
 
     por_empresa = {}
     for c in cargas_mes:
-        emp = c["empresa_cliente"]
+        emp = nome_empresa_rateio(c["empresa_cliente"])
         d = por_empresa.setdefault(emp, {"entrega": 0.0, "coleta": 0.0})
         if c["tipo"] == "ENTREGA":
             d["entrega"] += c["valor"]
@@ -361,8 +439,10 @@ def analisar_consumo_mes(
     }
 
 
-def analisar_frota_historica(viagens_com_despesas: list, veiculos: list) -> list:
-    """Consolida todos os lançamentos já registrados por veículo."""
+def analisar_frota_historica(
+    viagens_com_despesas: list, veiculos: list, despesas_gerais: list = None
+) -> list:
+    """Consolida lançamentos de viagens e manutenções gerais por veículo."""
     frota = {
         item["id"]: {
             "placa": item["placa"],
@@ -399,6 +479,24 @@ def analisar_frota_historica(viagens_com_despesas: list, veiculos: list) -> list
             for d in despesas
             if categoria_chave(d["categoria"]) == "COMBUSTIVEL"
         )
+    for despesa in despesas_gerais or []:
+        registro = dict(despesa)
+        veiculo_id = registro["veiculo_id"]
+        if veiculo_id is None:
+            continue
+        item = frota.setdefault(
+            veiculo_id,
+            {
+                "placa": registro.get("veiculo_placa") or "NÃO INFORMADO",
+                "codigo": registro.get("veiculo_codigo"),
+                "viagens": 0,
+                "km": 0.0,
+                "litros": 0.0,
+                "despesas": 0.0,
+                "consumo_medio": None,
+            },
+        )
+        item["despesas"] += float(registro["valor"] or 0)
     for item in frota.values():
         item["consumo_medio"] = item["km"] / item["litros"] if item["litros"] else None
     return sorted(frota.values(), key=lambda item: item["despesas"], reverse=True)

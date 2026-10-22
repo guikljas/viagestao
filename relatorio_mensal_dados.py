@@ -3,7 +3,7 @@
 from datetime import date
 
 import database as db
-from analise import analisar_consumo_mes, analisar_mes
+from analise import analisar_consumo_mes, analisar_mes, calcular_rateio_custos_gerais
 
 
 MESES = (
@@ -40,13 +40,25 @@ def obter_dados_relatorio_mensal(empresa_id, ano, mes):
         for viagem in db.listar_viagens(empresa_id)
         if inicio_mes.isoformat() <= str(viagem["data_inicio"]) < fim_mes.isoformat()
     ]
-    despesas = db.listar_despesas_periodo(
+    despesas_viagem = db.listar_despesas_periodo(
+        empresa_id, inicio_mes.isoformat(), fim_mes.isoformat()
+    )
+    manutencoes = db.listar_despesas_gerais_periodo(
         empresa_id, inicio_mes.isoformat(), fim_mes.isoformat()
     )
     cargas = db.listar_cargas_periodo(
         empresa_id, inicio_mes.isoformat(), fim_mes.isoformat()
     )
+    despesas = list(despesas_viagem) + [
+        {
+            **dict(item),
+            "viagem_id": None,
+            "categoria": f"CUSTO GERAL · {item['categoria']}",
+        }
+        for item in manutencoes
+    ]
     dados = analisar_mes(despesas, cargas)
+    rateio_custos_gerais = calcular_rateio_custos_gerais(manutencoes, cargas)
 
     por_categoria = {}
     for despesa in despesas:
@@ -72,6 +84,9 @@ def obter_dados_relatorio_mensal(empresa_id, ano, mes):
     despesas_historico = db.listar_despesas_periodo(
         empresa_id, inicio_historico.isoformat(), fim_mes.isoformat()
     )
+    manutencoes_historico = db.listar_despesas_gerais_periodo(
+        empresa_id, inicio_historico.isoformat(), fim_mes.isoformat()
+    )
     cargas_historico = db.listar_cargas_periodo(
         empresa_id, inicio_historico.isoformat(), fim_mes.isoformat()
     )
@@ -86,7 +101,7 @@ def obter_dados_relatorio_mensal(empresa_id, ano, mes):
                 "rotulo": f"{mes_item:02d}/{ano_item}",
                 "despesa": sum(
                     float(item["valor"] or 0)
-                    for item in despesas_historico
+                    for item in list(despesas_historico) + list(manutencoes_historico)
                     if str(item["data"]).startswith(prefixo)
                 ),
                 "receita": sum(
@@ -99,7 +114,7 @@ def obter_dados_relatorio_mensal(empresa_id, ano, mes):
 
     despesas_por_viagem = {viagem["id"]: [] for viagem in viagens}
     cargas_por_viagem = {viagem["id"]: [] for viagem in viagens}
-    for despesa in despesas:
+    for despesa in despesas_viagem:
         if despesa["viagem_id"] in despesas_por_viagem:
             despesas_por_viagem[despesa["viagem_id"]].append(despesa)
     for carga in cargas:
@@ -166,6 +181,9 @@ def obter_dados_relatorio_mensal(empresa_id, ano, mes):
         "fim": fim_mes,
         "viagens": viagens,
         "despesas": despesas,
+        "despesas_viagem": despesas_viagem,
+        "manutencoes": manutencoes,
+        "rateio_custos_gerais": rateio_custos_gerais,
         "cargas": cargas,
         "dados": dados,
         "categorias": categorias,

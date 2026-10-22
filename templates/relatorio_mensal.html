@@ -205,6 +205,41 @@
 
 </section>
 
+<section class="panel">
+
+    <div class="section-title">
+        <div>
+            <h2>Custos gerais rateados</h2>
+            <p>Manutenção, seguro, pedágio, IPVA e multa sem viagem vinculada, divididos conforme o frete de cada empresa atendida.</p>
+        </div>
+        <a href="{{ url_for('manutencoes', ano=ano, mes=mes) }}">Gerenciar custos →</a>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Empresa</th>
+                <th>Frete no período</th>
+                <th>Participação</th>
+                <th>Manutenção rateada</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in rateio_custos_gerais.por_empresa %}
+            <tr>
+                <td>{{ item.empresa }}</td>
+                <td>R$ {{ '%.2f'|format(item.frete) }}</td>
+                <td>{{ '%.2f'|format(item.percentual) }}%</td>
+                <td><b>R$ {{ '%.2f'|format(item.custo_rateado) }}</b></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4">Sem fretes ou custos gerais neste período.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+</section>
+
 {% elif pagina==2 %}
 
 <section class="panel map-panel">

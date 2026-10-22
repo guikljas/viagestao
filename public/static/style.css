@@ -29,6 +29,7 @@
 .selector-panel label{max-width:760px}
 .section-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
 .section-title h2,.panel h2{font-size:18px;margin:0 0 16px}
+.section-title p{margin:0;color:var(--muted);font-size:12px}
 .section-title a{font-size:12px;font-weight:700;color:var(--blue);text-decoration:none}
 .metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:15px;margin:20px 0}
 .metric-grid article{border:1px solid var(--line);background:#fff;border-radius:12px;padding:18px}
@@ -37,6 +38,9 @@
 .feedback p{padding:10px 13px;border-left:3px solid var(--blue);background:#f5f9fd;margin:10px 0;color:#395068}
 .actions{display:flex;gap:6px}
 .actions form{margin:0}
+.allocation-cell{min-width:265px}
+.allocation-cell span{display:block;padding:2px 0;font-size:11px;color:#41566a}
+.maintenance-metrics article:last-child b{font-size:15px}
 .trip-list{display:grid;gap:9px}
 .trip-row{display:grid;grid-template-columns:65px 1fr 190px 110px;gap:12px;align-items:center;color:#355069;text-decoration:none;border:1px solid #dce5ed;border-radius:8px;padding:12px 14px;font-size:12px}
 .trip-row:hover,.trip-row.selected{border-color:#83bde5;background:#f2f8fc}

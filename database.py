@@ -103,10 +103,11 @@ def inicializar():
  CREATE TABLE IF NOT EXISTS despesas(id INTEGER PRIMARY KEY,viagem_id INTEGER NOT NULL REFERENCES viagens(id),categoria TEXT NOT NULL,data TEXT NOT NULL,valor REAL NOT NULL,litros REAL,local_abastecimento TEXT,forma_pagamento TEXT,descricao TEXT,estabelecimento TEXT,quilometragem REAL,status TEXT DEFAULT 'Pendente',motivo_reprovacao TEXT,criado_por INTEGER REFERENCES usuarios(id),criado_em TEXT DEFAULT CURRENT_TIMESTAMP);
  CREATE TABLE IF NOT EXISTS anexos_despesa(id INTEGER PRIMARY KEY,despesa_id INTEGER REFERENCES despesas(id),nome TEXT,caminho TEXT,tamanho INTEGER,usuario_id INTEGER,criado_em TEXT DEFAULT CURRENT_TIMESTAMP);
  CREATE TABLE IF NOT EXISTS pagamentos(id INTEGER PRIMARY KEY,despesa_id INTEGER UNIQUE REFERENCES despesas(id),data TEXT,valor REAL,forma_pagamento TEXT,responsavel_id INTEGER,observacao TEXT);
+ CREATE TABLE IF NOT EXISTS despesas_gerais(id INTEGER PRIMARY KEY,empresa_id INTEGER NOT NULL REFERENCES empresas(id),veiculo_id INTEGER REFERENCES veiculos(id),categoria TEXT NOT NULL DEFAULT 'MANUTENÇÃO',data TEXT NOT NULL,valor REAL NOT NULL,descricao TEXT,estabelecimento TEXT,forma_pagamento TEXT,criado_por INTEGER REFERENCES usuarios(id),criado_em TEXT DEFAULT CURRENT_TIMESTAMP);
  CREATE TABLE IF NOT EXISTS cargas(id INTEGER PRIMARY KEY,viagem_id INTEGER NOT NULL REFERENCES viagens(id),empresa_cliente TEXT NOT NULL,tipo TEXT NOT NULL,data TEXT NOT NULL,valor REAL NOT NULL,descricao TEXT);
  CREATE TABLE IF NOT EXISTS categorias_despesa(id INTEGER PRIMARY KEY,empresa_id INTEGER REFERENCES empresas(id),nome TEXT NOT NULL,ativo INTEGER DEFAULT 1,UNIQUE(empresa_id,nome));
  CREATE TABLE IF NOT EXISTS auditoria(id INTEGER PRIMARY KEY,usuario_id INTEGER,empresa_id INTEGER,acao TEXT,entidade TEXT,registro_id INTEGER,criado_em TEXT DEFAULT CURRENT_TIMESTAMP);
- CREATE INDEX IF NOT EXISTS idx_viagens_empresa ON viagens(empresa_id);CREATE INDEX IF NOT EXISTS idx_despesas_viagem ON despesas(viagem_id);
+ CREATE INDEX IF NOT EXISTS idx_viagens_empresa ON viagens(empresa_id);CREATE INDEX IF NOT EXISTS idx_despesas_viagem ON despesas(viagem_id);CREATE INDEX IF NOT EXISTS idx_despesas_gerais_empresa_data ON despesas_gerais(empresa_id,data);
  """)
     # Acrescenta colunas a instalações antigas sem apagar dados.
     mig = {
@@ -211,10 +212,11 @@ def _inicializar_postgres():
  CREATE TABLE IF NOT EXISTS despesas(id BIGSERIAL PRIMARY KEY,viagem_id BIGINT NOT NULL REFERENCES viagens(id),categoria TEXT NOT NULL,data TEXT NOT NULL,valor DOUBLE PRECISION NOT NULL,litros DOUBLE PRECISION,local_abastecimento TEXT,forma_pagamento TEXT,descricao TEXT,estabelecimento TEXT,quilometragem DOUBLE PRECISION,status TEXT DEFAULT 'Pendente',motivo_reprovacao TEXT,criado_por BIGINT REFERENCES usuarios(id),criado_em TEXT DEFAULT CURRENT_TIMESTAMP::text);
  CREATE TABLE IF NOT EXISTS anexos_despesa(id BIGSERIAL PRIMARY KEY,despesa_id BIGINT REFERENCES despesas(id),nome TEXT,caminho TEXT,tamanho BIGINT,usuario_id BIGINT,criado_em TEXT DEFAULT CURRENT_TIMESTAMP::text);
  CREATE TABLE IF NOT EXISTS pagamentos(id BIGSERIAL PRIMARY KEY,despesa_id BIGINT UNIQUE REFERENCES despesas(id),data TEXT,valor DOUBLE PRECISION,forma_pagamento TEXT,responsavel_id BIGINT,observacao TEXT);
+ CREATE TABLE IF NOT EXISTS despesas_gerais(id BIGSERIAL PRIMARY KEY,empresa_id BIGINT NOT NULL REFERENCES empresas(id),veiculo_id BIGINT REFERENCES veiculos(id),categoria TEXT NOT NULL DEFAULT 'MANUTENÇÃO',data TEXT NOT NULL,valor DOUBLE PRECISION NOT NULL,descricao TEXT,estabelecimento TEXT,forma_pagamento TEXT,criado_por BIGINT REFERENCES usuarios(id),criado_em TEXT DEFAULT CURRENT_TIMESTAMP::text);
  CREATE TABLE IF NOT EXISTS categorias_despesa(id BIGSERIAL PRIMARY KEY,empresa_id BIGINT REFERENCES empresas(id),nome TEXT NOT NULL,ativo INTEGER DEFAULT 1);
  CREATE TABLE IF NOT EXISTS auditoria(id BIGSERIAL PRIMARY KEY,usuario_id BIGINT,empresa_id BIGINT,acao TEXT,entidade TEXT,registro_id BIGINT,criado_em TEXT DEFAULT CURRENT_TIMESTAMP::text);
  CREATE TABLE IF NOT EXISTS cargas(id BIGSERIAL PRIMARY KEY,viagem_id BIGINT NOT NULL REFERENCES viagens(id),empresa_cliente TEXT NOT NULL,tipo TEXT NOT NULL,data TEXT NOT NULL,valor DOUBLE PRECISION NOT NULL,descricao TEXT);
- CREATE INDEX IF NOT EXISTS idx_viagens_empresa ON viagens(empresa_id);CREATE INDEX IF NOT EXISTS idx_despesas_viagem ON despesas(viagem_id);
+ CREATE INDEX IF NOT EXISTS idx_viagens_empresa ON viagens(empresa_id);CREATE INDEX IF NOT EXISTS idx_despesas_viagem ON despesas(viagem_id);CREATE INDEX IF NOT EXISTS idx_despesas_gerais_empresa_data ON despesas_gerais(empresa_id,data);
  """
     c = conectar()
     for s in schema.split(";"):
@@ -610,6 +612,53 @@ def listar_despesas_periodo(empresa_id, inicio, fim):
     return _rows(q, (empresa_id, inicio, fim))
 
 
+def criar_despesa_geral(**dados):
+    """Registra um custo de frota que não pertence a uma viagem específica."""
+    dados.setdefault("veiculo_id", None)
+    dados.setdefault("categoria", "MANUTENÇÃO")
+    dados.setdefault("descricao", None)
+    dados.setdefault("estabelecimento", None)
+    dados.setdefault("forma_pagamento", None)
+    dados.setdefault("criado_por", None)
+    return _insert_id(
+        "INSERT INTO despesas_gerais(empresa_id,veiculo_id,categoria,data,valor,descricao,estabelecimento,forma_pagamento,criado_por) "
+        "VALUES(:empresa_id,:veiculo_id,:categoria,:data,:valor,:descricao,:estabelecimento,:forma_pagamento,:criado_por)",
+        dados,
+    )
+
+
+def listar_despesas_gerais(empresa_id=None, inicio=None, fim=None):
+    """Lista custos gerais com o veículo visível, inclusive os sem veículo."""
+    consulta = (
+        "SELECT dg.*,v.placa veiculo_placa,v.codigo veiculo_codigo,e.nome empresa_nome "
+        "FROM despesas_gerais dg "
+        "LEFT JOIN veiculos v ON v.id=dg.veiculo_id "
+        "JOIN empresas e ON e.id=dg.empresa_id WHERE 1=1"
+    )
+    parametros = []
+    if empresa_id is not None:
+        consulta += " AND dg.empresa_id=?"
+        parametros.append(empresa_id)
+    if inicio is not None:
+        consulta += " AND dg.data>=?"
+        parametros.append(inicio)
+    if fim is not None:
+        consulta += " AND dg.data<?"
+        parametros.append(fim)
+    return _rows(consulta + " ORDER BY dg.data DESC,dg.id DESC", parametros)
+
+
+def listar_despesas_gerais_periodo(empresa_id, inicio, fim):
+    return listar_despesas_gerais(empresa_id, inicio, fim)
+
+
+def excluir_despesa_geral(i):
+    c = conectar()
+    c.execute("DELETE FROM despesas_gerais WHERE id=?", (i,))
+    c.commit()
+    c.close()
+
+
 def alterar_status_despesa(i, s, m=None):
     c = conectar()
     c.execute("UPDATE despesas SET status=?,motivo_reprovacao=? WHERE id=?", (s, m, i))
@@ -649,6 +698,7 @@ def registrar_pagamento(i, data, valor, forma, u, obs):
 
 def resumo_dashboard(e):
     ds = listar_despesas(empresa_id=e)
+    despesas_gerais = listar_despesas_gerais(e)
     vs = listar_viagens(e)
     ms = listar_motoristas(e)
     valor_por_status = lambda status: sum(
@@ -659,7 +709,7 @@ def resumo_dashboard(e):
         float(item["valor"])
         for item in ds
         if item["status"] not in ("Reprovada", "Cancelada")
-    )
+    ) + sum(float(item["valor"] or 0) for item in despesas_gerais)
     return dict(
         total=total_lancado,
         pendente=valor_por_status("Pendente"),
@@ -670,6 +720,7 @@ def resumo_dashboard(e):
         media_viagem=total_lancado / len(vs) if vs else 0,
         media_motorista=total_lancado / len(ms) if ms else 0,
         despesas=ds,
+        despesas_gerais=despesas_gerais,
     )
 
 
@@ -688,6 +739,10 @@ def excluir_veiculo(i):
     if _one("SELECT 1 FROM viagens WHERE veiculo_id=?", (i,)):
         raise ValueError(
             "Este veículo possui viagens registradas; marque-o como inativo para preservar o histórico."
+        )
+    if _one("SELECT 1 FROM despesas_gerais WHERE veiculo_id=?", (i,)):
+        raise ValueError(
+            "Este veículo possui manutenções gerais registradas; marque-o como inativo para preservar o histórico."
         )
     c = conectar()
     c.execute("DELETE FROM veiculos WHERE id=?", (i,))
