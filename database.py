@@ -197,8 +197,7 @@ def inicializar():
     c.execute("UPDATE usuarios SET perfil='Usuário' WHERE perfil NOT IN (?, ?)", PERFIS)
     c.commit()
     c.close()
-    normalizar_placas_conhecidas()
-    normalizar_clientes_rateio_conhecidos()
+    _executar_normalizacoes_iniciais()
 
 
 def _inicializar_postgres():
@@ -263,8 +262,7 @@ def _inicializar_postgres():
     )
     c.commit()
     c.close()
-    normalizar_placas_conhecidas()
-    normalizar_clientes_rateio_conhecidos()
+    _executar_normalizacoes_iniciais()
 
 
 def autenticar(email, senha):
@@ -331,6 +329,28 @@ def placa_padrao(placa):
         caractere for caractere in (placa or "").upper() if caractere.isalnum()
     )
     return PLACAS_CANONICAS.get(chave, chave)
+
+
+def _executar_normalizacoes_iniciais():
+    """Executa correções de cadastros sem impedir a inicialização do sistema.
+
+    As tabelas principais e autenticação precisam continuar disponíveis mesmo
+    se uma correção complementar encontrar um banco ainda em migração. O erro
+    permanece nos logs do servidor para investigação e a rotina será tentada
+    novamente na próxima inicialização.
+    """
+    tarefas = (
+        ("placas da frota", normalizar_placas_conhecidas),
+        ("clientes de rateio", normalizar_clientes_rateio_conhecidos),
+    )
+    for nome, tarefa in tarefas:
+        try:
+            tarefa()
+        except Exception as erro:
+            print(
+                "[ViaGestão] Não foi possível concluir a normalização de "
+                f"{nome}: {erro}"
+            )
 
 
 def normalizar_placas_conhecidas():
