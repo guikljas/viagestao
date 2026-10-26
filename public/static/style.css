@@ -375,5 +375,5 @@ body.login{display:block}
 .operational-alert:hover{transform:translateY(-2px);box-shadow:0 8px 18px #062f5514}
 .operational-alert b{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#986000}.operational-alert span{font-size:13px;font-weight:700}.operational-alert strong{font-size:11px;color:#845100}
 .operational-alert.overdue{background:#fff4f4;border-color:#efb8be;border-left-color:var(--danger)}.operational-alert.overdue b,.operational-alert.overdue strong{color:var(--danger)}
-.profitability-callout{margin:20px 0}.attachment-link{font-size:11px;color:var(--blue);text-decoration:none;overflow-wrap:anywhere}.attachment-link:hover{text-decoration:underline}
+.profitability-callout{margin:20px 0}
 .table-scroll{overflow-x:auto}.positive-value{color:#087847;font-weight:800}.negative-value{color:var(--danger);font-weight:800}.profitability-metrics article:last-child{border-top:3px solid #0c8a53}.company-mark .profitability-metrics article:last-child{border-top-color:#c61e2d}

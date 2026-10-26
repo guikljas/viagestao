@@ -32,7 +32,7 @@
 
 <section class="panel operation-panel">
 
-    <form method="post" class="form-grid two-columns" enctype="multipart/form-data">
+    <form method="post" class="form-grid two-columns">
 
         <input type="hidden" name="viagem" value="{{viagem_id}}">
 
@@ -101,11 +101,6 @@
             <textarea name="descricao" rows="3"></textarea>
         </label>
 
-        <label class="full">
-            Comprovantes <small>(JPG, PNG, WEBP ou PDF; até 5 MB por arquivo)</small>
-            <input type="file" name="comprovantes" accept="image/jpeg,image/png,image/webp,application/pdf" multiple>
-        </label>
-
         <div class="full">
             <button class="button">Lançar despesa</button>
         </div>
@@ -127,7 +122,6 @@
                 <th>Data</th>
                 <th>Valor</th>
                 <th>Pagamento</th>
-                <th>Comprovantes</th>
                 <th>Status</th>
                 <th></th>
             </tr>
@@ -144,15 +138,6 @@
                 <td>{{x.data}}</td>
                 <td>R$ {{'%.2f'|format(x.valor)}}</td>
                 <td>{{x.forma_pagamento or '—'}}</td>
-
-                <td>
-                    {% set anexos = anexos_por_despesa.get(x.id, []) %}
-                    {% if anexos %}
-                        {% for anexo in anexos %}
-                        <a class="attachment-link" href="{{ url_for('baixar_comprovante', anexo_id=anexo.id) }}">{{anexo.nome}}</a>{% if not loop.last %}<br>{% endif %}
-                        {% endfor %}
-                    {% else %}—{% endif %}
-                </td>
 
                 <td>
                     <span class="status">{{x.status}}</span>
@@ -177,7 +162,7 @@
             {% else %}
 
             <tr>
-                <td colspan="8">Nenhuma despesa cadastrada.</td>
+                <td colspan="7">Nenhuma despesa cadastrada.</td>
             </tr>
 
             {% endfor %}

@@ -101,7 +101,7 @@ def inicializar():
  CREATE TABLE IF NOT EXISTS veiculos(id INTEGER PRIMARY KEY,placa TEXT NOT NULL,codigo TEXT,descricao TEXT,marca TEXT,ano INTEGER,tipo TEXT,quilometragem REAL DEFAULT 0,status TEXT DEFAULT 'Ativo',motorista_id INTEGER REFERENCES motoristas(id),vencimento_licenciamento TEXT,vencimento_seguro TEXT,vencimento_ipva TEXT,proxima_manutencao TEXT,empresa_id INTEGER NOT NULL REFERENCES empresas(id));
  CREATE TABLE IF NOT EXISTS viagens(id INTEGER PRIMARY KEY,empresa_id INTEGER NOT NULL REFERENCES empresas(id),motorista_id INTEGER NOT NULL REFERENCES motoristas(id),veiculo_id INTEGER NOT NULL REFERENCES veiculos(id),data_inicio TEXT NOT NULL,data_fim TEXT,origem TEXT,destino TEXT,motivo TEXT,cliente_atividade TEXT,hodometro_inicio REAL NOT NULL,hodometro_fim REAL,media_computador_bordo REAL,valor_adiantamento REAL DEFAULT 0,valor_devolvido REAL DEFAULT 0,valor_nf_ida REAL DEFAULT 0,valor_nf_retorno REAL DEFAULT 0,status TEXT DEFAULT 'Planejada',observacoes TEXT);
  CREATE TABLE IF NOT EXISTS despesas(id INTEGER PRIMARY KEY,viagem_id INTEGER NOT NULL REFERENCES viagens(id),categoria TEXT NOT NULL,data TEXT NOT NULL,valor REAL NOT NULL,litros REAL,local_abastecimento TEXT,forma_pagamento TEXT,descricao TEXT,estabelecimento TEXT,quilometragem REAL,status TEXT DEFAULT 'Pendente',motivo_reprovacao TEXT,criado_por INTEGER REFERENCES usuarios(id),criado_em TEXT DEFAULT CURRENT_TIMESTAMP);
- CREATE TABLE IF NOT EXISTS anexos_despesa(id INTEGER PRIMARY KEY,despesa_id INTEGER REFERENCES despesas(id),nome TEXT,caminho TEXT,tamanho INTEGER,tipo_mime TEXT,conteudo BLOB,usuario_id INTEGER,criado_em TEXT DEFAULT CURRENT_TIMESTAMP);
+ CREATE TABLE IF NOT EXISTS anexos_despesa(id INTEGER PRIMARY KEY,despesa_id INTEGER REFERENCES despesas(id),nome TEXT,caminho TEXT,tamanho INTEGER,usuario_id INTEGER,criado_em TEXT DEFAULT CURRENT_TIMESTAMP);
  CREATE TABLE IF NOT EXISTS pagamentos(id INTEGER PRIMARY KEY,despesa_id INTEGER UNIQUE REFERENCES despesas(id),data TEXT,valor REAL,forma_pagamento TEXT,responsavel_id INTEGER,observacao TEXT);
  CREATE TABLE IF NOT EXISTS despesas_gerais(id INTEGER PRIMARY KEY,empresa_id INTEGER NOT NULL REFERENCES empresas(id),veiculo_id INTEGER REFERENCES veiculos(id),categoria TEXT NOT NULL DEFAULT 'MANUTENÇÃO',data TEXT NOT NULL,valor REAL NOT NULL,descricao TEXT,estabelecimento TEXT,forma_pagamento TEXT,criado_por INTEGER REFERENCES usuarios(id),criado_em TEXT DEFAULT CURRENT_TIMESTAMP);
  CREATE TABLE IF NOT EXISTS cargas(id INTEGER PRIMARY KEY,viagem_id INTEGER NOT NULL REFERENCES viagens(id),empresa_cliente TEXT NOT NULL,tipo TEXT NOT NULL,data TEXT NOT NULL,valor REAL NOT NULL,descricao TEXT);
@@ -157,10 +157,6 @@ def inicializar():
         for n, k in cols.items():
             if n not in old:
                 c.execute(f"ALTER TABLE {t} ADD COLUMN {n} {k}")
-    anexos_antigos = {x[1] for x in c.execute("PRAGMA table_info(anexos_despesa)")}
-    for nome, tipo in {"tipo_mime": "TEXT", "conteudo": "BLOB"}.items():
-        if nome not in anexos_antigos:
-            c.execute(f"ALTER TABLE anexos_despesa ADD COLUMN {nome} {tipo}")
     c.execute(
         "UPDATE empresas SET nome='ERIMAX',razao_social='Erimar Indústria e Comércio de Produtos para Saúde Ltda.',cnpj='11.463.608/0001-79' WHERE nome='ERIMAR'"
     )
@@ -218,7 +214,7 @@ def _inicializar_postgres():
  CREATE TABLE IF NOT EXISTS veiculos(id BIGSERIAL PRIMARY KEY,placa TEXT NOT NULL,codigo TEXT,descricao TEXT,marca TEXT,ano INTEGER,tipo TEXT,quilometragem DOUBLE PRECISION DEFAULT 0,status TEXT DEFAULT 'Ativo',motorista_id BIGINT REFERENCES motoristas(id),vencimento_licenciamento TEXT,vencimento_seguro TEXT,vencimento_ipva TEXT,proxima_manutencao TEXT,empresa_id BIGINT NOT NULL REFERENCES empresas(id));
  CREATE TABLE IF NOT EXISTS viagens(id BIGSERIAL PRIMARY KEY,empresa_id BIGINT NOT NULL REFERENCES empresas(id),motorista_id BIGINT NOT NULL REFERENCES motoristas(id),veiculo_id BIGINT NOT NULL REFERENCES veiculos(id),data_inicio TEXT NOT NULL,data_fim TEXT,origem TEXT,destino TEXT,motivo TEXT,cliente_atividade TEXT,hodometro_inicio DOUBLE PRECISION NOT NULL,hodometro_fim DOUBLE PRECISION,media_computador_bordo DOUBLE PRECISION,valor_adiantamento DOUBLE PRECISION DEFAULT 0,valor_devolvido DOUBLE PRECISION DEFAULT 0,valor_nf_ida DOUBLE PRECISION DEFAULT 0,valor_nf_retorno DOUBLE PRECISION DEFAULT 0,status TEXT DEFAULT 'Planejada',observacoes TEXT);
  CREATE TABLE IF NOT EXISTS despesas(id BIGSERIAL PRIMARY KEY,viagem_id BIGINT NOT NULL REFERENCES viagens(id),categoria TEXT NOT NULL,data TEXT NOT NULL,valor DOUBLE PRECISION NOT NULL,litros DOUBLE PRECISION,local_abastecimento TEXT,forma_pagamento TEXT,descricao TEXT,estabelecimento TEXT,quilometragem DOUBLE PRECISION,status TEXT DEFAULT 'Pendente',motivo_reprovacao TEXT,criado_por BIGINT REFERENCES usuarios(id),criado_em TEXT DEFAULT CURRENT_TIMESTAMP::text);
- CREATE TABLE IF NOT EXISTS anexos_despesa(id BIGSERIAL PRIMARY KEY,despesa_id BIGINT REFERENCES despesas(id),nome TEXT,caminho TEXT,tamanho BIGINT,tipo_mime TEXT,conteudo BYTEA,usuario_id BIGINT,criado_em TEXT DEFAULT CURRENT_TIMESTAMP::text);
+ CREATE TABLE IF NOT EXISTS anexos_despesa(id BIGSERIAL PRIMARY KEY,despesa_id BIGINT REFERENCES despesas(id),nome TEXT,caminho TEXT,tamanho BIGINT,usuario_id BIGINT,criado_em TEXT DEFAULT CURRENT_TIMESTAMP::text);
  CREATE TABLE IF NOT EXISTS pagamentos(id BIGSERIAL PRIMARY KEY,despesa_id BIGINT UNIQUE REFERENCES despesas(id),data TEXT,valor DOUBLE PRECISION,forma_pagamento TEXT,responsavel_id BIGINT,observacao TEXT);
  CREATE TABLE IF NOT EXISTS despesas_gerais(id BIGSERIAL PRIMARY KEY,empresa_id BIGINT NOT NULL REFERENCES empresas(id),veiculo_id BIGINT REFERENCES veiculos(id),categoria TEXT NOT NULL DEFAULT 'MANUTENÇÃO',data TEXT NOT NULL,valor DOUBLE PRECISION NOT NULL,descricao TEXT,estabelecimento TEXT,forma_pagamento TEXT,criado_por BIGINT REFERENCES usuarios(id),criado_em TEXT DEFAULT CURRENT_TIMESTAMP::text);
  CREATE TABLE IF NOT EXISTS categorias_despesa(id BIGSERIAL PRIMARY KEY,empresa_id BIGINT REFERENCES empresas(id),nome TEXT NOT NULL,ativo INTEGER DEFAULT 1);
@@ -235,8 +231,6 @@ def _inicializar_postgres():
         "ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS vencimento_seguro TEXT",
         "ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS vencimento_ipva TEXT",
         "ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS proxima_manutencao TEXT",
-        "ALTER TABLE anexos_despesa ADD COLUMN IF NOT EXISTS tipo_mime TEXT",
-        "ALTER TABLE anexos_despesa ADD COLUMN IF NOT EXISTS conteudo BYTEA",
     ):
         c.execute(comando)
     for n, rj, cnpj in [
@@ -747,12 +741,11 @@ def alterar_status_despesa(i, s, m=None):
     c.close()
 
 
-def anexar_comprovante(despesa_id, nome, tamanho, usuario_id, conteudo, tipo_mime):
-    """Salva o comprovante no banco, compatível com o armazenamento efêmero da Vercel."""
+def anexar_comprovante(despesa_id, nome, caminho, tamanho, usuario_id):
     c = conectar()
     c.execute(
-        "INSERT INTO anexos_despesa(despesa_id,nome,caminho,tamanho,tipo_mime,conteudo,usuario_id) VALUES(?,?,?,?,?,?,?)",
-        (despesa_id, nome, None, tamanho, tipo_mime, conteudo, usuario_id),
+        "INSERT INTO anexos_despesa(despesa_id,nome,caminho,tamanho,usuario_id) VALUES(?,?,?,?,?)",
+        (despesa_id, nome, caminho, tamanho, usuario_id),
     )
     c.commit()
     c.close()
@@ -763,23 +756,6 @@ def listar_anexos(despesa_id):
         "SELECT * FROM anexos_despesa WHERE despesa_id=? ORDER BY criado_em DESC",
         (despesa_id,),
     )
-
-
-def obter_anexo(anexo_id):
-    return _one("SELECT * FROM anexos_despesa WHERE id=?", (anexo_id,))
-
-
-def listar_anexos_por_viagem(viagem_id):
-    anexos = _rows(
-        "SELECT a.* FROM anexos_despesa a "
-        "JOIN despesas d ON d.id=a.despesa_id "
-        "WHERE d.viagem_id=? ORDER BY a.criado_em DESC",
-        (viagem_id,),
-    )
-    por_despesa = {}
-    for anexo in anexos:
-        por_despesa.setdefault(anexo["despesa_id"], []).append(anexo)
-    return por_despesa
 
 
 def registrar_pagamento(i, data, valor, forma, u, obs):

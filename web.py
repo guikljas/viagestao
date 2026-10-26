@@ -1,6 +1,5 @@
 """Interface web do ViaGestão, pronta para hospedagem WSGI."""
 
-import io
 import os, tempfile, uuid
 from datetime import date
 from functools import wraps
@@ -15,7 +14,6 @@ from flask import (
     url_for,
     send_file,
 )
-from werkzeug.utils import secure_filename
 import database as db
 from relatorio import gerar_relatorio
 from utils import fmt_placa
@@ -82,37 +80,6 @@ def numero(valor, padrao=0.0):
     if "," in texto:
         texto = texto.replace(".", "").replace(",", ".")
     return float(texto) if texto else padrao
-
-
-EXTENSOES_COMPROVANTE = {".jpg", ".jpeg", ".png", ".webp", ".pdf"}
-TAMANHO_MAXIMO_COMPROVANTE = 5 * 1024 * 1024
-
-
-def salvar_comprovantes(despesa_id):
-    """Valida e persiste fotos/PDFs no banco, inclusive no deploy serverless."""
-    enviados = 0
-    for arquivo in request.files.getlist("comprovantes"):
-        if not arquivo or not arquivo.filename:
-            continue
-        nome = secure_filename(arquivo.filename)
-        extensao = os.path.splitext(nome)[1].lower()
-        if extensao not in EXTENSOES_COMPROVANTE:
-            raise ValueError("Envie apenas imagens (JPG, PNG, WEBP) ou PDF.")
-        conteudo = arquivo.read()
-        if not conteudo:
-            continue
-        if len(conteudo) > TAMANHO_MAXIMO_COMPROVANTE:
-            raise ValueError("Cada comprovante pode ter no máximo 5 MB.")
-        db.anexar_comprovante(
-            despesa_id,
-            nome,
-            len(conteudo),
-            session["user_id"],
-            conteudo,
-            arquivo.mimetype or "application/octet-stream",
-        )
-        enviados += 1
-    return enviados
 
 
 def viagens_da_empresa(empresa_id):
@@ -466,12 +433,8 @@ def despesas():
                 quilometragem=numero(request.form.get("quilometragem"), None),
                 criado_por=session["user_id"],
             )
-            comprovantes = salvar_comprovantes(ident)
             db.auditar(session["user_id"], eid, "Criação", "Despesa", ident)
-            mensagem = "Despesa enviada para aprovação."
-            if comprovantes:
-                mensagem += f" {comprovantes} comprovante(s) anexado(s)."
-            flash(mensagem, "success")
+            flash("Despesa enviada para aprovação.", "success")
         except (ValueError, KeyError):
             flash("Confira os dados da despesa.", "error")
         return redirect(url_for("despesas", viagem=viagem_id))
@@ -481,9 +444,6 @@ def despesas():
         empresas=empresas,
         empresa=empresa,
         despesas=db.listar_despesas(viagem_id=viagem_id) if viagem_id else [],
-        anexos_por_despesa=(
-            db.listar_anexos_por_viagem(viagem_id) if viagem_id else {}
-        ),
         viagens=viagens,
         viagem_id=viagem_id,
         categorias=[
@@ -501,28 +461,6 @@ def despesas():
             "OUTRAS",
         ],
         hoje=date.today().isoformat(),
-    )
-
-
-@app.get("/despesas/comprovantes/<int:anexo_id>")
-@login_required
-def baixar_comprovante(anexo_id):
-    """Entrega o arquivo apenas para quem tem acesso à empresa da despesa."""
-    _, eid, _ = context()
-    anexo = db.obter_anexo(anexo_id)
-    if not anexo or not anexo["conteudo"]:
-        abort(404)
-    despesa = next(
-        (item for item in db.listar_despesas(empresa_id=eid) if item["id"] == anexo["despesa_id"]),
-        None,
-    )
-    if not despesa:
-        abort(403)
-    return send_file(
-        io.BytesIO(bytes(anexo["conteudo"])),
-        mimetype=anexo["tipo_mime"] or "application/octet-stream",
-        as_attachment=True,
-        download_name=anexo["nome"] or f"comprovante-{anexo_id}",
     )
 
 
