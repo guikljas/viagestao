@@ -194,6 +194,26 @@
             </select>
         </label>
 
+        <label>
+            Vencimento do licenciamento
+            <input type="date" name="vencimento_licenciamento" value="{{registro.vencimento_licenciamento or ''}}">
+        </label>
+
+        <label>
+            Vencimento do seguro
+            <input type="date" name="vencimento_seguro" value="{{registro.vencimento_seguro or ''}}">
+        </label>
+
+        <label>
+            Vencimento do IPVA
+            <input type="date" name="vencimento_ipva" value="{{registro.vencimento_ipva or ''}}">
+        </label>
+
+        <label>
+            Próxima manutenção preventiva
+            <input type="date" name="proxima_manutencao" value="{{registro.proxima_manutencao or ''}}">
+        </label>
+
         {% endif %}
 
         <button>Salvar alterações</button>

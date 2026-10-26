@@ -52,6 +52,44 @@
 
 </section>
 
+<section class="panel alerts-panel">
+
+    <div class="panel-title">
+        <div>
+            <h3>Alertas operacionais</h3>
+            <span>CNH, licenciamento, seguro, IPVA e manutenção preventiva com vencimento em até 30 dias.</span>
+        </div>
+    </div>
+
+    {% if alertas %}
+    <div class="alert-list">
+        {% for alerta in alertas[:8] %}
+        <a class="operational-alert {{ 'overdue' if alerta.vencido else '' }}" href="{{alerta.url}}">
+            <b>{{alerta.titulo}}</b>
+            <span>{{alerta.responsavel}}</span>
+            <strong>
+                {% if alerta.vencido %}Vencido há {{-alerta.dias}} dia(s)
+                {% elif alerta.dias == 0 %}Vence hoje
+                {% else %}Vence em {{alerta.dias}} dia(s){% endif %}
+            </strong>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">Nenhum vencimento nos próximos 30 dias. Cadastre as datas de documentos e manutenção ao editar os veículos.</div>
+    {% endif %}
+
+</section>
+
+<section class="export-card profitability-callout">
+    <div>
+        <span class="eyebrow">RESULTADO OPERACIONAL</span>
+        <h3>Rentabilidade por viagem, rota e cliente</h3>
+        <p>Veja receita, custo direto, rateio de custos gerais e lucro líquido em uma única visão.</p>
+    </div>
+    <a class="button" href="{{ url_for('rentabilidade') }}">Abrir rentabilidade →</a>
+</section>
+
 <section class="panel fleet-panel">
 
     <div class="panel-title">

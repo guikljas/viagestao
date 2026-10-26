@@ -5,6 +5,7 @@ media do computador de bordo informada na viagem, e custo medio do litro.
 """
 
 import unicodedata
+from datetime import date, timedelta
 
 from utils import fmt_numero, nome_motorista_padrao
 
@@ -500,3 +501,141 @@ def analisar_frota_historica(
     for item in frota.values():
         item["consumo_medio"] = item["km"] / item["litros"] if item["litros"] else None
     return sorted(frota.values(), key=lambda item: item["despesas"], reverse=True)
+
+
+def calcular_alertas_operacionais(motoristas, veiculos, hoje=None, dias_alerta=30):
+    """Lista documentos e manutenções vencidos ou próximos do vencimento."""
+    hoje = hoje or date.today()
+    limite = hoje + timedelta(days=dias_alerta)
+    alertas = []
+
+    def incluir(tipo, titulo, responsavel, vencimento, url):
+        if not vencimento:
+            return
+        try:
+            data = date.fromisoformat(str(vencimento)[:10])
+        except ValueError:
+            return
+        if data > limite:
+            return
+        dias = (data - hoje).days
+        alertas.append(
+            {
+                "tipo": tipo,
+                "titulo": titulo,
+                "responsavel": responsavel,
+                "data": data.isoformat(),
+                "dias": dias,
+                "vencido": dias < 0,
+                "url": url,
+            }
+        )
+
+    for motorista in motoristas:
+        motorista = dict(motorista)
+        incluir(
+            "CNH",
+            "CNH",
+            (motorista.get("nome") or "Motorista").upper(),
+            motorista.get("validade_cnh"),
+            f"/editar-motorista?registro_id={motorista['id']}",
+        )
+    for veiculo in veiculos:
+        veiculo = dict(veiculo)
+        nome = veiculo.get("placa") or "Veículo"
+        url = f"/editar-veiculo?registro_id={veiculo['id']}"
+        incluir("LICENCIAMENTO", "Licenciamento", nome, veiculo.get("vencimento_licenciamento"), url)
+        incluir("SEGURO", "Seguro", nome, veiculo.get("vencimento_seguro"), url)
+        incluir("IPVA", "IPVA", nome, veiculo.get("vencimento_ipva"), url)
+        incluir("MANUTENÇÃO", "Manutenção preventiva", nome, veiculo.get("proxima_manutencao"), url)
+
+    return sorted(alertas, key=lambda item: (not item["vencido"], item["data"], item["responsavel"]))
+
+
+def analisar_rentabilidade(
+    viagens, despesas_por_viagem, cargas_por_viagem, despesas_gerais
+):
+    """Consolida receita, despesas diretas, rateio geral e lucro líquido."""
+    linhas = []
+    total_receita = 0.0
+    total_direto = 0.0
+    for viagem in viagens:
+        registro = dict(viagem)
+        viagem_id = registro["id"]
+        despesas = despesas_por_viagem.get(viagem_id, [])
+        cargas = cargas_por_viagem.get(viagem_id, [])
+        analise = analisar_viagem(registro, despesas, cargas)
+        receita = float(analise["receita_total"] or 0)
+        direto = float(analise["total_geral"] or 0)
+        linha = {
+            "id": viagem_id,
+            "motorista": registro.get("motorista_nome") or "—",
+            "veiculo": registro.get("veiculo_placa") or "—",
+            "rota": f"{registro.get('origem') or '—'} → {registro.get('destino') or '—'}",
+            "data": registro.get("data_inicio"),
+            "receita": receita,
+            "despesa_direta": direto,
+            "custo_geral": 0.0,
+            "lucro": 0.0,
+            "margem": None,
+            "cargas": cargas,
+        }
+        linhas.append(linha)
+        total_receita += receita
+        total_direto += direto
+
+    total_geral = sum(float(dict(item).get("valor") or 0) for item in despesas_gerais)
+    acumulado = 0.0
+    for indice, linha in enumerate(linhas):
+        if indice == len(linhas) - 1:
+            alocado = round(total_geral - acumulado, 2)
+        elif total_receita:
+            alocado = round(total_geral * linha["receita"] / total_receita, 2)
+            acumulado += alocado
+        else:
+            alocado = 0.0
+        linha["custo_geral"] = alocado
+        linha["lucro"] = round(linha["receita"] - linha["despesa_direta"] - alocado, 2)
+        linha["margem"] = (linha["lucro"] / linha["receita"] * 100) if linha["receita"] else None
+
+    def agrupar(chave):
+        grupos = {}
+        for linha in linhas:
+            nome = chave(linha)
+            item = grupos.setdefault(nome, {"nome": nome, "receita": 0.0, "despesa": 0.0, "lucro": 0.0})
+            item["receita"] += linha["receita"]
+            item["despesa"] += linha["despesa_direta"] + linha["custo_geral"]
+            item["lucro"] += linha["lucro"]
+        for item in grupos.values():
+            item["margem"] = item["lucro"] / item["receita"] * 100 if item["receita"] else None
+        return sorted(grupos.values(), key=lambda item: item["lucro"], reverse=True)
+
+    por_cliente = {}
+    for linha in linhas:
+        receita_viagem = sum(float(carga["valor"] or 0) for carga in linha["cargas"])
+        for carga in linha["cargas"]:
+            carga = dict(carga)
+            nome = nome_empresa_rateio(carga.get("empresa_cliente"))
+            participacao = float(carga["valor"] or 0) / receita_viagem if receita_viagem else 0
+            item = por_cliente.setdefault(nome, {"nome": nome, "receita": 0.0, "despesa": 0.0, "lucro": 0.0})
+            item["receita"] += float(carga["valor"] or 0)
+            item["despesa"] += (linha["despesa_direta"] + linha["custo_geral"]) * participacao
+    for item in por_cliente.values():
+        item["receita"] = round(item["receita"], 2)
+        item["despesa"] = round(item["despesa"], 2)
+        item["lucro"] = round(item["receita"] - item["despesa"], 2)
+        item["margem"] = item["lucro"] / item["receita"] * 100 if item["receita"] else None
+
+    total_custo = total_direto + total_geral
+    return {
+        "totais": {
+            "receita": round(total_receita, 2),
+            "direto": round(total_direto, 2),
+            "geral": round(total_geral, 2),
+            "lucro": round(total_receita - total_custo, 2),
+            "margem": (total_receita - total_custo) / total_receita * 100 if total_receita else None,
+        },
+        "viagens": sorted(linhas, key=lambda item: item["lucro"], reverse=True),
+        "rotas": agrupar(lambda item: item["rota"]),
+        "clientes": sorted(por_cliente.values(), key=lambda item: item["lucro"], reverse=True),
+    }

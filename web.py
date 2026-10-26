@@ -1,5 +1,6 @@
 """Interface web do ViaGestão, pronta para hospedagem WSGI."""
 
+import io
 import os, tempfile, uuid
 from datetime import date
 from functools import wraps
@@ -14,6 +15,7 @@ from flask import (
     url_for,
     send_file,
 )
+from werkzeug.utils import secure_filename
 import database as db
 from relatorio import gerar_relatorio
 from utils import fmt_placa
@@ -22,6 +24,8 @@ from analise import (
     analisar_mes,
     analisar_viagem,
     analisar_frota_historica,
+    analisar_rentabilidade,
+    calcular_alertas_operacionais,
     calcular_rateio_custos_gerais,
 )
 from importar_historico_zip import (
@@ -80,6 +84,37 @@ def numero(valor, padrao=0.0):
     return float(texto) if texto else padrao
 
 
+EXTENSOES_COMPROVANTE = {".jpg", ".jpeg", ".png", ".webp", ".pdf"}
+TAMANHO_MAXIMO_COMPROVANTE = 5 * 1024 * 1024
+
+
+def salvar_comprovantes(despesa_id):
+    """Valida e persiste fotos/PDFs no banco, inclusive no deploy serverless."""
+    enviados = 0
+    for arquivo in request.files.getlist("comprovantes"):
+        if not arquivo or not arquivo.filename:
+            continue
+        nome = secure_filename(arquivo.filename)
+        extensao = os.path.splitext(nome)[1].lower()
+        if extensao not in EXTENSOES_COMPROVANTE:
+            raise ValueError("Envie apenas imagens (JPG, PNG, WEBP) ou PDF.")
+        conteudo = arquivo.read()
+        if not conteudo:
+            continue
+        if len(conteudo) > TAMANHO_MAXIMO_COMPROVANTE:
+            raise ValueError("Cada comprovante pode ter no máximo 5 MB.")
+        db.anexar_comprovante(
+            despesa_id,
+            nome,
+            len(conteudo),
+            session["user_id"],
+            conteudo,
+            arquivo.mimetype or "application/octet-stream",
+        )
+        enviados += 1
+    return enviados
+
+
 def viagens_da_empresa(empresa_id):
     return db.listar_viagens(empresa_id)
 
@@ -136,6 +171,9 @@ def dashboard():
         veiculos,
         resumo["despesas_gerais"],
     )
+    alertas = calcular_alertas_operacionais(
+        db.listar_motoristas(eid), veiculos, date.today()
+    )
     return render_template(
         "dashboard.html",
         empresas=empresas,
@@ -143,6 +181,33 @@ def dashboard():
         resumo=resumo,
         categories=categories,
         frota_historica=frota_historica,
+        alertas=alertas,
+    )
+
+
+@app.get("/rentabilidade")
+@login_required
+def rentabilidade():
+    """Mostra lucro líquido por viagem, rota e empresa atendida."""
+    empresas, eid, empresa = context()
+    viagens = viagens_da_empresa(eid)
+    despesas_por_viagem = {
+        viagem["id"]: db.listar_despesas(viagem["id"]) for viagem in viagens
+    }
+    cargas_por_viagem = {
+        viagem["id"]: db.listar_cargas(viagem["id"]) for viagem in viagens
+    }
+    dados = analisar_rentabilidade(
+        viagens,
+        despesas_por_viagem,
+        cargas_por_viagem,
+        db.listar_despesas_gerais(eid),
+    )
+    return render_template(
+        "rentabilidade.html",
+        empresas=empresas,
+        empresa=empresa,
+        dados=dados,
     )
 
 
@@ -401,8 +466,12 @@ def despesas():
                 quilometragem=numero(request.form.get("quilometragem"), None),
                 criado_por=session["user_id"],
             )
+            comprovantes = salvar_comprovantes(ident)
             db.auditar(session["user_id"], eid, "Criação", "Despesa", ident)
-            flash("Despesa enviada para aprovação.", "success")
+            mensagem = "Despesa enviada para aprovação."
+            if comprovantes:
+                mensagem += f" {comprovantes} comprovante(s) anexado(s)."
+            flash(mensagem, "success")
         except (ValueError, KeyError):
             flash("Confira os dados da despesa.", "error")
         return redirect(url_for("despesas", viagem=viagem_id))
@@ -412,6 +481,9 @@ def despesas():
         empresas=empresas,
         empresa=empresa,
         despesas=db.listar_despesas(viagem_id=viagem_id) if viagem_id else [],
+        anexos_por_despesa=(
+            db.listar_anexos_por_viagem(viagem_id) if viagem_id else {}
+        ),
         viagens=viagens,
         viagem_id=viagem_id,
         categorias=[
@@ -429,6 +501,28 @@ def despesas():
             "OUTRAS",
         ],
         hoje=date.today().isoformat(),
+    )
+
+
+@app.get("/despesas/comprovantes/<int:anexo_id>")
+@login_required
+def baixar_comprovante(anexo_id):
+    """Entrega o arquivo apenas para quem tem acesso à empresa da despesa."""
+    _, eid, _ = context()
+    anexo = db.obter_anexo(anexo_id)
+    if not anexo or not anexo["conteudo"]:
+        abort(404)
+    despesa = next(
+        (item for item in db.listar_despesas(empresa_id=eid) if item["id"] == anexo["despesa_id"]),
+        None,
+    )
+    if not despesa:
+        abort(403)
+    return send_file(
+        io.BytesIO(bytes(anexo["conteudo"])),
+        mimetype=anexo["tipo_mime"] or "application/octet-stream",
+        as_attachment=True,
+        download_name=anexo["nome"] or f"comprovante-{anexo_id}",
     )
 
 
@@ -844,6 +938,10 @@ def cadastrar(tipo):
                     if request.form.get("motorista_id")
                     else None
                 ),
+                vencimento_licenciamento=request.form.get("vencimento_licenciamento") or None,
+                vencimento_seguro=request.form.get("vencimento_seguro") or None,
+                vencimento_ipva=request.form.get("vencimento_ipva") or None,
+                proxima_manutencao=request.form.get("proxima_manutencao") or None,
                 empresa_id=eid,
             )
         else:
@@ -942,6 +1040,10 @@ def editar_cadastro(tipo, registro_id):
                         else None
                     ),
                     status=request.form["status"],
+                    vencimento_licenciamento=request.form.get("vencimento_licenciamento") or None,
+                    vencimento_seguro=request.form.get("vencimento_seguro") or None,
+                    vencimento_ipva=request.form.get("vencimento_ipva") or None,
+                    proxima_manutencao=request.form.get("proxima_manutencao") or None,
                 )
             else:
                 raise ValueError("Cadastro inválido.")

@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+
+{% block content %}
+
+<div class="operation-head">
+    <span class="eyebrow">RESULTADO OPERACIONAL · {{empresa.nome}}</span>
+    <h1>Rentabilidade</h1>
+    <p>Receita, custo direto, rateio dos custos gerais e lucro líquido por viagem, rota e cliente.</p>
+</div>
+
+<section class="metrics profitability-metrics">
+    <article><small>RECEITA TOTAL</small><strong>R$ {{'%.2f'|format(dados.totais.receita)}}</strong></article>
+    <article><small>CUSTO DIRETO</small><strong>R$ {{'%.2f'|format(dados.totais.direto)}}</strong></article>
+    <article><small>CUSTOS GERAIS RATEADOS</small><strong>R$ {{'%.2f'|format(dados.totais.geral)}}</strong></article>
+    <article><small>LUCRO LÍQUIDO</small><strong>R$ {{'%.2f'|format(dados.totais.lucro)}}</strong></article>
+</section>
+
+<section class="panel">
+    <div class="panel-title"><div><h3>Resultado por viagem</h3><span>Custos gerais são distribuídos proporcionalmente ao frete de cada viagem.</span></div></div>
+    <div class="table-scroll"><table>
+        <thead><tr><th>Viagem</th><th>Data</th><th>Motorista / veículo</th><th>Rota</th><th>Receita</th><th>Direto</th><th>Rateio geral</th><th>Lucro líquido</th><th>Margem</th></tr></thead>
+        <tbody>{% for item in dados.viagens %}<tr>
+            <td>#{{item.id}}</td><td>{{item.data}}</td><td>{{item.motorista}}<br><small>{{item.veiculo}}</small></td><td>{{item.rota}}</td>
+            <td>R$ {{'%.2f'|format(item.receita)}}</td><td>R$ {{'%.2f'|format(item.despesa_direta)}}</td><td>R$ {{'%.2f'|format(item.custo_geral)}}</td>
+            <td class="{{ 'negative-value' if item.lucro < 0 else 'positive-value' }}">R$ {{'%.2f'|format(item.lucro)}}</td><td>{{'%.1f%%'|format(item.margem) if item.margem is not none else '—'}}</td>
+        </tr>{% else %}<tr><td colspan="9">Ainda não há viagens para calcular a rentabilidade.</td></tr>{% endfor %}</tbody>
+    </table></div>
+</section>
+
+<div class="bi-grid">
+    <section class="panel">
+        <div class="panel-title"><div><h3>Por rota</h3><span>Lucro consolidado de cada origem e destino.</span></div></div>
+        <table><thead><tr><th>Rota</th><th>Receita</th><th>Despesa</th><th>Lucro</th><th>Margem</th></tr></thead>
+        <tbody>{% for item in dados.rotas %}<tr><td>{{item.nome}}</td><td>R$ {{'%.2f'|format(item.receita)}}</td><td>R$ {{'%.2f'|format(item.despesa)}}</td><td class="{{ 'negative-value' if item.lucro < 0 else 'positive-value' }}">R$ {{'%.2f'|format(item.lucro)}}</td><td>{{'%.1f%%'|format(item.margem) if item.margem is not none else '—'}}</td></tr>{% else %}<tr><td colspan="5">Sem rotas com receita.</td></tr>{% endfor %}</tbody></table>
+    </section>
+    <section class="panel">
+        <div class="panel-title"><div><h3>Por empresa atendida</h3><span>Resultado calculado sobre as cargas registradas.</span></div></div>
+        <table><thead><tr><th>Cliente</th><th>Receita</th><th>Despesa</th><th>Lucro</th><th>Margem</th></tr></thead>
+        <tbody>{% for item in dados.clientes %}<tr><td>{{item.nome}}</td><td>R$ {{'%.2f'|format(item.receita)}}</td><td>R$ {{'%.2f'|format(item.despesa)}}</td><td class="{{ 'negative-value' if item.lucro < 0 else 'positive-value' }}">R$ {{'%.2f'|format(item.lucro)}}</td><td>{{'%.1f%%'|format(item.margem) if item.margem is not none else '—'}}</td></tr>{% else %}<tr><td colspan="5">Sem cargas registradas.</td></tr>{% endfor %}</tbody></table>
+    </section>
+</div>
+
+{% endblock %}
