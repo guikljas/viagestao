@@ -80,41 +80,27 @@ def calcular_rateio_custos_gerais(despesas_gerais, cargas):
     é ajustado na última parcela para que a soma sempre seja exatamente igual
     ao valor lançado da manutenção.
     """
-    cargas = [dict(carga) for carga in cargas]
-    fretes_total = {}
+    fretes = {}
     for carga in cargas:
-        empresa = nome_empresa_rateio(carga.get("empresa_cliente"))
-        fretes_total[empresa] = fretes_total.get(empresa, 0.0) + float(carga.get("valor") or 0)
-    por_empresa = {}
+        registro = dict(carga)
+        empresa = nome_empresa_rateio(registro.get("empresa_cliente"))
+        fretes[empresa] = fretes.get(empresa, 0.0) + float(registro.get("valor") or 0)
+
+    total_fretes = sum(fretes.values())
+    empresas = sorted(fretes)
+    por_empresa = {
+        empresa: {
+            "empresa": empresa,
+            "frete": fretes[empresa],
+            "percentual": (fretes[empresa] / total_fretes * 100) if total_fretes else 0.0,
+            "custo_rateado": 0.0,
+        }
+        for empresa in empresas
+    }
     lancamentos = []
 
     for despesa in despesas_gerais:
         registro = dict(despesa)
-        # Veículos externos à frota operacional não entram no custo das viagens.
-        if registro.get("veiculo_id") is not None and registro.get("participa_operacao") == 0:
-            continue
-        referencia = str(registro.get("data") or "")[:10]
-        inicio = str(registro.get("periodo_inicio") or referencia)[:10]
-        fim = str(registro.get("periodo_fim") or referencia)[:10]
-        if not registro.get("periodo_inicio") and len(referencia) >= 7:
-            inicio = f"{referencia[:7]}-01"
-            ano, mes = map(int, referencia[:7].split("-"))
-            fim = (
-                date(ano + 1, 1, 1) if mes == 12 else date(ano, mes + 1, 1)
-            ).isoformat()
-            cargas_base = [
-                carga for carga in cargas if inicio <= str(carga.get("data")) < fim
-            ]
-        else:
-            cargas_base = [
-                carga for carga in cargas if inicio <= str(carga.get("data")) <= fim
-            ]
-        fretes = {}
-        for carga in cargas_base:
-            empresa = nome_empresa_rateio(carga.get("empresa_cliente"))
-            fretes[empresa] = fretes.get(empresa, 0.0) + float(carga.get("valor") or 0)
-        total_fretes = sum(fretes.values())
-        empresas = sorted(fretes)
         valor = round(float(registro.get("valor") or 0), 2)
         parcelas = []
         acumulado = 0.0
@@ -127,43 +113,23 @@ def calcular_rateio_custos_gerais(despesas_gerais, cargas):
             parcelas.append(
                 {
                     "empresa": empresa,
-                    "percentual": fretes[empresa] / total_fretes * 100,
+                    "percentual": por_empresa[empresa]["percentual"],
                     "valor": parcela,
                 }
             )
-            resumo = por_empresa.setdefault(
-                empresa,
-                {"empresa": empresa, "frete": 0.0, "custo_rateado": 0.0},
-            )
-            resumo["frete"] += fretes[empresa]
-            resumo["custo_rateado"] += parcela
-        lancamentos.append(
-            {
-                **registro,
-                "periodo_inicio_calculado": inicio,
-                "periodo_fim_calculado": fim,
-                "parcelas": parcelas,
-            }
-        )
+            por_empresa[empresa]["custo_rateado"] += parcela
+        lancamentos.append({**registro, "parcelas": parcelas})
 
     for item in por_empresa.values():
         item["frete"] = round(item["frete"], 2)
         item["custo_rateado"] = round(item["custo_rateado"], 2)
-        item["percentual"] = (
-            item["custo_rateado"] / sum(
-                float(item_custo["custo_rateado"]) for item_custo in por_empresa.values()
-            )
-            * 100
-            if sum(float(item_custo["custo_rateado"]) for item_custo in por_empresa.values())
-            else 0.0
-        )
 
     return {
         "total_custos": round(
-            sum(float(item.get("valor") or 0) for item in lancamentos), 2
+            sum(float(dict(item).get("valor") or 0) for item in despesas_gerais), 2
         ),
-        "total_fretes": round(sum(fretes_total.values()), 2),
-        "tem_base_rateio": bool(fretes_total),
+        "total_fretes": round(total_fretes, 2),
+        "tem_base_rateio": bool(total_fretes),
         "por_empresa": list(por_empresa.values()),
         "lancamentos": lancamentos,
     }

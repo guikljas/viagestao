@@ -242,8 +242,6 @@ def manutencoes():
                 descricao=request.form.get("descricao"),
                 estabelecimento=request.form.get("estabelecimento"),
                 forma_pagamento=request.form.get("forma"),
-                periodo_inicio=request.form.get("periodo_inicio") or None,
-                periodo_fim=request.form.get("periodo_fim") or None,
                 criado_por=session["user_id"],
             )
             db.auditar(session["user_id"], eid, "Criação", "Custo geral", identificador)
@@ -260,9 +258,7 @@ def manutencoes():
         eid, inicio.isoformat(), fim.isoformat()
     )
     cargas_periodo = db.listar_cargas_periodo(eid, inicio.isoformat(), fim.isoformat())
-    rateio = calcular_rateio_custos_gerais(
-        despesas_gerais, db.listar_cargas_empresa(eid)
-    )
+    rateio = calcular_rateio_custos_gerais(despesas_gerais, cargas_periodo)
     return render_template(
         "manutencoes.html",
         empresas=empresas,

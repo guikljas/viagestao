@@ -226,7 +226,15 @@ def gerar_relatorio(empresa_id: int = None, caminho_saida: str = None) -> str:
     _cabecalho(ws1c, colunas1c)
     linha = 2
     for custo in custos_gerais:
-        rateio = calcular_rateio_custos_gerais([custo], cargas_todas)
+        periodo = str(custo["data"])[:7]
+        cargas_periodo = [
+            carga
+            for carga in cargas_todas
+            if str(carga["data"]).startswith(periodo)
+            and carga["viagem_id"] in viagens_por_id
+            and viagens_por_id[carga["viagem_id"]]["empresa_id"] == custo["empresa_id"]
+        ]
+        rateio = calcular_rateio_custos_gerais([custo], cargas_periodo)
         parcelas = rateio["lancamentos"][0]["parcelas"]
         if not parcelas:
             parcelas = [
