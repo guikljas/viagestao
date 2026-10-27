@@ -99,7 +99,6 @@ def login():
         if user:
             session.clear()
             session.update(user_id=user["id"], nome=user["nome"], perfil=user["perfil"])
-            db.auditar(user["id"], None, "Login", "Usuário", user["id"])
             return redirect(url_for("dashboard"))
         flash("E-mail ou senha inválidos.", "error")
     return render_template("login.html")

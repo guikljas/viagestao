@@ -23,6 +23,7 @@ CATEGORIAS = [
 STATUS_DESPESA = ["Rascunho", "Pendente", "Aprovada", "Reprovada", "Paga", "Cancelada"]
 STATUS_VIAGEM = ["Planejada", "Em andamento", "Finalizada", "Cancelada"]
 PERFIS = ["Administrador", "Usuário"]
+VERSAO_ESQUEMA = 6
 
 
 class _ConexaoPostgres:
@@ -88,7 +89,36 @@ def _one(q, p=()):
     return r[0] if r else None
 
 
+def _esquema_atualizado():
+    """Evita repetir migrações pesadas em cada inicialização serverless."""
+    conexao = conectar()
+    try:
+        registro = conexao.execute(
+            "SELECT valor FROM metadados_sistema WHERE chave='versao_esquema'"
+        ).fetchone()
+        return registro is not None and int(registro["valor"]) >= VERSAO_ESQUEMA
+    except Exception:
+        # Bancos antigos não têm a tabela de metadados: executam a migração uma vez.
+        try:
+            conexao.raw.rollback() if USANDO_POSTGRES else conexao.rollback()
+        except Exception:
+            pass
+        return False
+    finally:
+        conexao.close()
+
+
+def _registrar_versao_esquema(conexao):
+    conexao.execute(
+        "INSERT INTO metadados_sistema(chave,valor) VALUES(?,?) "
+        "ON CONFLICT (chave) DO UPDATE SET valor=EXCLUDED.valor",
+        ("versao_esquema", str(VERSAO_ESQUEMA)),
+    )
+
+
 def inicializar():
+    if _esquema_atualizado():
+        return
     if USANDO_POSTGRES:
         _inicializar_postgres()
         return
@@ -107,6 +137,7 @@ def inicializar():
  CREATE TABLE IF NOT EXISTS cargas(id INTEGER PRIMARY KEY,viagem_id INTEGER NOT NULL REFERENCES viagens(id),empresa_cliente TEXT NOT NULL,tipo TEXT NOT NULL,data TEXT NOT NULL,valor REAL NOT NULL,descricao TEXT);
  CREATE TABLE IF NOT EXISTS categorias_despesa(id INTEGER PRIMARY KEY,empresa_id INTEGER REFERENCES empresas(id),nome TEXT NOT NULL,ativo INTEGER DEFAULT 1,UNIQUE(empresa_id,nome));
  CREATE TABLE IF NOT EXISTS auditoria(id INTEGER PRIMARY KEY,usuario_id INTEGER,empresa_id INTEGER,acao TEXT,entidade TEXT,registro_id INTEGER,criado_em TEXT DEFAULT CURRENT_TIMESTAMP);
+ CREATE TABLE IF NOT EXISTS metadados_sistema(chave TEXT PRIMARY KEY,valor TEXT NOT NULL);
  CREATE INDEX IF NOT EXISTS idx_viagens_empresa ON viagens(empresa_id);CREATE INDEX IF NOT EXISTS idx_despesas_viagem ON despesas(viagem_id);CREATE INDEX IF NOT EXISTS idx_despesas_gerais_empresa_data ON despesas_gerais(empresa_id,data);
  """)
     # Acrescenta colunas a instalações antigas sem apagar dados.
@@ -204,6 +235,7 @@ def inicializar():
         for e in c.execute("SELECT id FROM empresas"):
             c.execute("INSERT INTO usuario_empresas VALUES(?,?)", (u, e[0]))
     c.execute("UPDATE usuarios SET perfil='Usuário' WHERE perfil NOT IN (?, ?)", PERFIS)
+    _registrar_versao_esquema(c)
     c.commit()
     c.close()
     _executar_normalizacoes_iniciais()
@@ -224,6 +256,7 @@ def _inicializar_postgres():
  CREATE TABLE IF NOT EXISTS despesas_gerais(id BIGSERIAL PRIMARY KEY,empresa_id BIGINT NOT NULL REFERENCES empresas(id),veiculo_id BIGINT REFERENCES veiculos(id),categoria TEXT NOT NULL DEFAULT 'MANUTENÇÃO',data TEXT NOT NULL,periodo_inicio TEXT,periodo_fim TEXT,valor DOUBLE PRECISION NOT NULL,descricao TEXT,estabelecimento TEXT,forma_pagamento TEXT,criado_por BIGINT REFERENCES usuarios(id),criado_em TEXT DEFAULT CURRENT_TIMESTAMP::text);
  CREATE TABLE IF NOT EXISTS categorias_despesa(id BIGSERIAL PRIMARY KEY,empresa_id BIGINT REFERENCES empresas(id),nome TEXT NOT NULL,ativo INTEGER DEFAULT 1);
  CREATE TABLE IF NOT EXISTS auditoria(id BIGSERIAL PRIMARY KEY,usuario_id BIGINT,empresa_id BIGINT,acao TEXT,entidade TEXT,registro_id BIGINT,criado_em TEXT DEFAULT CURRENT_TIMESTAMP::text);
+ CREATE TABLE IF NOT EXISTS metadados_sistema(chave TEXT PRIMARY KEY,valor TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS cargas(id BIGSERIAL PRIMARY KEY,viagem_id BIGINT NOT NULL REFERENCES viagens(id),empresa_cliente TEXT NOT NULL,tipo TEXT NOT NULL,data TEXT NOT NULL,valor DOUBLE PRECISION NOT NULL,descricao TEXT);
  CREATE INDEX IF NOT EXISTS idx_viagens_empresa ON viagens(empresa_id);CREATE INDEX IF NOT EXISTS idx_despesas_viagem ON despesas(viagem_id);CREATE INDEX IF NOT EXISTS idx_despesas_gerais_empresa_data ON despesas_gerais(empresa_id,data);
  """
@@ -279,17 +312,30 @@ def _inicializar_postgres():
     c.execute(
         "UPDATE usuarios SET perfil='Usuário' WHERE perfil NOT IN (%s, %s)", PERFIS
     )
+    _registrar_versao_esquema(c)
     c.commit()
     c.close()
     _executar_normalizacoes_iniciais()
 
 
 def autenticar(email, senha):
-    u = _one(
-        "SELECT * FROM usuarios WHERE lower(email)=lower(?) AND ativo=1",
-        (email.strip(),),
-    )
-    return u if u and verificar_senha(senha, u["senha_hash"]) else None
+    """Autentica e registra o acesso usando uma única conexão ao banco."""
+    conexao = conectar()
+    try:
+        usuario = conexao.execute(
+            "SELECT * FROM usuarios WHERE lower(email)=lower(?) AND ativo=1",
+            (email.strip(),),
+        ).fetchone()
+        if not usuario or not verificar_senha(senha, usuario["senha_hash"]):
+            return None
+        conexao.execute(
+            "INSERT INTO auditoria(usuario_id,empresa_id,acao,entidade,registro_id) VALUES(?,?,?,?,?)",
+            (usuario["id"], None, "Login", "Usuário", usuario["id"]),
+        )
+        conexao.commit()
+        return usuario
+    finally:
+        conexao.close()
 
 
 def listar_empresas(usuario_id=None):
