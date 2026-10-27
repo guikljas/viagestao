@@ -214,6 +214,12 @@
             <input type="date" name="proxima_manutencao" value="{{registro.proxima_manutencao or ''}}">
         </label>
 
+        <label class="checkbox-label">
+            <input type="checkbox" name="participa_operacao" value="1" {% if registro.participa_operacao != 0 %}checked{% endif %}>
+            Participa da operação e dos rateios
+            <small>Desmarque para veículo particular ou fora da frota operacional.</small>
+        </label>
+
         {% endif %}
 
         <button>Salvar alterações</button>

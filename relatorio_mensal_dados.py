@@ -58,7 +58,9 @@ def obter_dados_relatorio_mensal(empresa_id, ano, mes):
         for item in manutencoes
     ]
     dados = analisar_mes(despesas, cargas)
-    rateio_custos_gerais = calcular_rateio_custos_gerais(manutencoes, cargas)
+    rateio_custos_gerais = calcular_rateio_custos_gerais(
+        manutencoes, db.listar_cargas_empresa(empresa_id)
+    )
 
     por_categoria = {}
     for despesa in despesas:

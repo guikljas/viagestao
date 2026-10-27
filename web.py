@@ -155,26 +155,62 @@ def dashboard():
 @app.get("/rentabilidade")
 @login_required
 def rentabilidade():
-    """Mostra lucro líquido por viagem, rota e empresa atendida."""
+    """Mostra resultado operacional por período, rota e empresa atendida."""
     empresas, eid, empresa = context()
-    viagens = viagens_da_empresa(eid)
+    hoje = date.today()
+    inicio = request.args.get("inicio") or hoje.replace(day=1).isoformat()
+    fim = request.args.get("fim") or hoje.isoformat()
+    try:
+        data_inicio = date.fromisoformat(inicio)
+        data_fim = date.fromisoformat(fim)
+        if data_fim < data_inicio:
+            raise ValueError
+    except ValueError:
+        flash("Informe um período válido para a rentabilidade.", "error")
+        return redirect(url_for("rentabilidade"))
+    fim_exclusivo = date.fromordinal(data_fim.toordinal() + 1).isoformat()
+    veiculos = {item["id"]: dict(item) for item in db.listar_veiculos(eid)}
+    viagens = [
+        viagem
+        for viagem in viagens_da_empresa(eid)
+        if veiculos.get(viagem["veiculo_id"], {}).get("participa_operacao", 1)
+        and str(viagem["data_inicio"]) < fim_exclusivo
+        and str(viagem["data_fim"] or viagem["data_inicio"]) >= inicio
+    ]
     despesas_por_viagem = {
-        viagem["id"]: db.listar_despesas(viagem["id"]) for viagem in viagens
+        viagem["id"]: [
+            item
+            for item in db.listar_despesas(viagem["id"])
+            if inicio <= str(item["data"]) < fim_exclusivo
+        ]
+        for viagem in viagens
     }
     cargas_por_viagem = {
-        viagem["id"]: db.listar_cargas(viagem["id"]) for viagem in viagens
+        viagem["id"]: [
+            item
+            for item in db.listar_cargas(viagem["id"])
+            if inicio <= str(item["data"]) < fim_exclusivo
+        ]
+        for viagem in viagens
     }
+    custos_gerais = [
+        item
+        for item in db.listar_despesas_gerais(eid, inicio, fim_exclusivo)
+        if item["veiculo_id"] is None or item["participa_operacao"] != 0
+    ]
     dados = analisar_rentabilidade(
         viagens,
         despesas_por_viagem,
         cargas_por_viagem,
-        db.listar_despesas_gerais(eid),
+        custos_gerais,
     )
     return render_template(
         "rentabilidade.html",
         empresas=empresas,
         empresa=empresa,
         dados=dados,
+        inicio=inicio,
+        fim=fim,
     )
 
 
@@ -207,6 +243,8 @@ def manutencoes():
                 descricao=request.form.get("descricao"),
                 estabelecimento=request.form.get("estabelecimento"),
                 forma_pagamento=request.form.get("forma"),
+                periodo_inicio=request.form.get("periodo_inicio") or None,
+                periodo_fim=request.form.get("periodo_fim") or None,
                 criado_por=session["user_id"],
             )
             db.auditar(session["user_id"], eid, "Criação", "Custo geral", identificador)
@@ -223,7 +261,9 @@ def manutencoes():
         eid, inicio.isoformat(), fim.isoformat()
     )
     cargas_periodo = db.listar_cargas_periodo(eid, inicio.isoformat(), fim.isoformat())
-    rateio = calcular_rateio_custos_gerais(despesas_gerais, cargas_periodo)
+    rateio = calcular_rateio_custos_gerais(
+        despesas_gerais, db.listar_cargas_empresa(eid)
+    )
     return render_template(
         "manutencoes.html",
         empresas=empresas,
@@ -880,6 +920,7 @@ def cadastrar(tipo):
                 vencimento_seguro=request.form.get("vencimento_seguro") or None,
                 vencimento_ipva=request.form.get("vencimento_ipva") or None,
                 proxima_manutencao=request.form.get("proxima_manutencao") or None,
+                participa_operacao=1 if request.form.get("participa_operacao") else 0,
                 empresa_id=eid,
             )
         else:
@@ -982,6 +1023,7 @@ def editar_cadastro(tipo, registro_id):
                     vencimento_seguro=request.form.get("vencimento_seguro") or None,
                     vencimento_ipva=request.form.get("vencimento_ipva") or None,
                     proxima_manutencao=request.form.get("proxima_manutencao") or None,
+                    participa_operacao=1 if request.form.get("participa_operacao") else 0,
                 )
             else:
                 raise ValueError("Cadastro inválido.")

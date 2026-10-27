@@ -83,6 +83,16 @@
         </label>
 
         <label>
+            Início do período de referência
+            <input type="date" name="periodo_inicio">
+        </label>
+
+        <label>
+            Fim do período de referência
+            <input type="date" name="periodo_fim">
+        </label>
+
+        <label>
             Valor (R$)
             <input name="valor" inputmode="decimal" required>
         </label>
@@ -156,7 +166,7 @@
     <div class="section-title">
         <div>
             <h2>Custos gerais lançados</h2>
-            <p>Cada item abaixo mostra a divisão calculada no momento da consulta.</p>
+            <p>Quando informado, o período de referência define quais fretes entram no rateio do item.</p>
         </div>
     </div>
 
@@ -164,6 +174,7 @@
         <thead>
             <tr>
                 <th>Data</th>
+                <th>Período de referência</th>
                 <th>Categoria</th>
                 <th>Veículo</th>
                 <th>Fornecedor</th>
@@ -177,6 +188,7 @@
             {% for item in rateio.lancamentos %}
             <tr>
                 <td>{{ item.data }}</td>
+                <td>{{ item.periodo_inicio_calculado }} até {{ item.periodo_fim_calculado }}</td>
                 <td>{{ item.categoria }}</td>
                 <td>{{ item.veiculo_placa or 'Frota geral' }}</td>
                 <td>{{ item.estabelecimento or '—' }}</td>
@@ -198,7 +210,7 @@
                 </td>
             </tr>
             {% else %}
-            <tr><td colspan="8">Nenhum custo geral lançado neste período.</td></tr>
+            <tr><td colspan="9">Nenhum custo geral lançado neste período.</td></tr>
             {% endfor %}
         </tbody>
     </table>

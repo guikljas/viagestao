@@ -377,3 +377,4 @@ body.login{display:block}
 .operational-alert.overdue{background:#fff4f4;border-color:#efb8be;border-left-color:var(--danger)}.operational-alert.overdue b,.operational-alert.overdue strong{color:var(--danger)}
 .profitability-callout{margin:20px 0}
 .table-scroll{overflow-x:auto}.positive-value{color:#087847;font-weight:800}.negative-value{color:var(--danger);font-weight:800}.profitability-metrics article:last-child{border-top:3px solid #0c8a53}.company-mark .profitability-metrics article:last-child{border-top-color:#c61e2d}
+.checkbox-label{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.checkbox-label input{width:auto}.checkbox-label small{flex-basis:100%;color:var(--muted)}.form-note{margin:10px 0 0;color:var(--muted);font-size:12px}
