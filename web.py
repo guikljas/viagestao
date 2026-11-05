@@ -586,16 +586,23 @@ def cargas():
             viagem_id = int(request.form["viagem"])
             if not any(x["id"] == viagem_id for x in viagens):
                 raise ValueError
+            valor_manifesto = numero(request.form["valor_manifesto"])
+            valor_retorno = numero(request.form.get("valor_retorno"))
+            valor_entregue = round(valor_manifesto - valor_retorno, 2)
+            if valor_manifesto <= 0 or valor_retorno < 0 or valor_entregue < 0:
+                raise ValueError
             ident = db.criar_carga(
                 viagem_id=viagem_id,
                 empresa_cliente=request.form["cliente"].strip(),
                 tipo=request.form["tipo"],
                 data=request.form["data"],
-                valor=numero(request.form["valor"]),
+                valor=valor_entregue,
+                valor_manifesto=valor_manifesto,
+                valor_retorno=valor_retorno,
                 descricao=request.form.get("descricao"),
             )
             db.auditar(session["user_id"], eid, "Criação", "Carga", ident)
-            flash("Carga lançada.", "success")
+            flash("Carga lançada. O rateio considera somente o valor efetivamente entregue.", "success")
         except (ValueError, KeyError):
             flash("Confira os dados da carga.", "error")
         return redirect(url_for("cargas", viagem=request.form.get("viagem")))

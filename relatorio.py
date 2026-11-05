@@ -173,7 +173,9 @@ def gerar_relatorio(empresa_id: int = None, caminho_saida: str = None) -> str:
         "Empresa Atendida",
         "Tipo",
         "Data",
-        "Valor (R$)",
+        "Valor do Manifesto (R$)",
+        "Valor Retornado (R$)",
+        "Valor Entregue / Rateado (R$)",
         "Descricao",
     ]
     _cabecalho(ws1b, colunas1b)
@@ -203,10 +205,18 @@ def gerar_relatorio(empresa_id: int = None, caminho_saida: str = None) -> str:
             row=linha, column=6, value="Entrega" if c["tipo"] == "ENTREGA" else "Coleta"
         )
         ws1b.cell(row=linha, column=7, value=fmt_data(c["data"]))
-        ws1b.cell(row=linha, column=8, value=round(c["valor"], 2))
-        ws1b.cell(row=linha, column=9, value=c["descricao"] or "")
+        ws1b.cell(
+            row=linha,
+            column=8,
+            value=round(c["valor_manifesto"], 2)
+            if c["valor_manifesto"] is not None
+            else None,
+        )
+        ws1b.cell(row=linha, column=9, value=round(c["valor_retorno"] or 0, 2))
+        ws1b.cell(row=linha, column=10, value=round(c["valor"], 2))
+        ws1b.cell(row=linha, column=11, value=c["descricao"] or "")
         linha += 1
-    _autofit(ws1b, [14, 20, 12, 30, 20, 10, 12, 12, 35])
+    _autofit(ws1b, [14, 20, 12, 30, 20, 10, 12, 20, 20, 24, 35])
 
     # --- Aba 3: custos de frota sem viagem e o rateio de frete ---
     ws1c = wb.create_sheet("Custos Gerais Rateados")

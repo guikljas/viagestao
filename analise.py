@@ -243,8 +243,8 @@ def analisar_viagem(viagem: dict, despesas: list, cargas: list = None) -> dict:
     total_coleta = sum(d["coleta"] for d in cargas_por_empresa.values())
     total_cargas = total_entrega + total_coleta
 
-    # rateio do custo da viagem entre as empresas atendidas, proporcional a
-    # quanto cada uma representa da receita da viagem (faturamento + retorno).
+    # Rateio do custo da viagem entre as empresas atendidas, proporcional ao
+    # valor efetivamente entregue. Valores retornados não participam do cálculo.
     # O valor legado de NF ida/retorno (sem empresa vinculada) nao entra no
     # rateio -- so as cargas lancadas por "Lancar Carga" tem empresa conhecida.
     for emp, d in cargas_por_empresa.items():

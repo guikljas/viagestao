@@ -5,7 +5,7 @@
 <div class="operation-head">
     <span class="eyebrow">CONTROLE DE DESPESAS DE VIAGEM</span>
     <h1>Lançar carga</h1>
-    <p>Registre entregas e coletas para calcular a receita e o rateio das despesas.</p>
+    <p>Registre o manifesto, o retorno e a entrega concluída. O rateio considera somente o valor efetivamente entregue.</p>
 </div>
 
 {% if viagens %}
@@ -70,8 +70,18 @@
         </label>
 
         <label>
-            Valor (R$)
-            <input inputmode="decimal" name="valor" required>
+            Valor total do manifesto (R$)
+            <input inputmode="decimal" name="valor_manifesto" id="valor-manifesto" required>
+        </label>
+
+        <label>
+            Valor retornado (R$)
+            <input inputmode="decimal" name="valor_retorno" id="valor-retorno" value="0">
+        </label>
+
+        <label>
+            Valor efetivamente entregue / rateado (R$)
+            <output id="valor-entregue" class="field-output">R$ 0,00</output>
         </label>
 
         <label class="full">
@@ -98,7 +108,10 @@
                 <th>Empresa atendida</th>
                 <th>Tipo</th>
                 <th>Data</th>
-                <th>Valor</th>
+                <th>Manifesto</th>
+                <th>Retorno</th>
+                <th>Entregue / rateado</th>
+                <th>Observação</th>
                 <th></th>
             </tr>
         </thead>
@@ -112,7 +125,10 @@
                 <td>{{x.empresa_cliente}}</td>
                 <td>{{x.tipo}}</td>
                 <td>{{x.data}}</td>
-                <td>R$ {{'%.2f'|format(x.valor)}}</td>
+                <td>{% if x.valor_manifesto is not none %}R$ {{'%.2f'|format(x.valor_manifesto)}}{% else %}—{% endif %}</td>
+                <td>R$ {{'%.2f'|format(x.valor_retorno or 0)}}</td>
+                <td><b>R$ {{'%.2f'|format(x.valor)}}</b></td>
+                <td>{{x.descricao or '—'}}</td>
 
                 <td>
                     <form
@@ -131,7 +147,7 @@
             {% else %}
 
             <tr>
-                <td colspan="5">Nenhuma carga nesta viagem.</td>
+                <td colspan="8">Nenhuma carga nesta viagem.</td>
             </tr>
 
             {% endfor %}
@@ -149,5 +165,25 @@
 </section>
 
 {% endif %}
+
+<script>
+(() => {
+    const manifesto = document.getElementById("valor-manifesto");
+    const retorno = document.getElementById("valor-retorno");
+    const entregue = document.getElementById("valor-entregue");
+    if (!manifesto || !retorno || !entregue) return;
+    const numero = (campo) => {
+        const texto = String(campo.value).trim();
+        return Number(texto.includes(",") ? texto.replace(/\./g, "").replace(",", ".") : texto) || 0;
+    };
+    const atualizar = () => {
+        const valor = Math.max(0, numero(manifesto) - numero(retorno));
+        entregue.textContent = valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    };
+    manifesto.addEventListener("input", atualizar);
+    retorno.addEventListener("input", atualizar);
+    atualizar();
+})();
+</script>
 
 {% endblock %}

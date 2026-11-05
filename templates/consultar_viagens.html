@@ -259,7 +259,9 @@
                 <th>Cliente</th>
                 <th>Tipo</th>
                 <th>Data</th>
-                <th>Valor</th>
+                <th>Manifesto</th>
+                <th>Retorno</th>
+                <th>Entregue / rateado</th>
                 <th>Descrição</th>
             </tr>
         </thead>
@@ -272,14 +274,16 @@
                 <td>{{x.empresa_cliente}}</td>
                 <td>{{x.tipo}}</td>
                 <td>{{x.data}}</td>
-                <td>R$ {{'%.2f'|format(x.valor)}}</td>
+                <td>{% if x.valor_manifesto is not none %}R$ {{'%.2f'|format(x.valor_manifesto)}}{% else %}—{% endif %}</td>
+                <td>R$ {{'%.2f'|format(x.valor_retorno or 0)}}</td>
+                <td><b>R$ {{'%.2f'|format(x.valor)}}</b></td>
                 <td>{{x.descricao or '—'}}</td>
             </tr>
 
             {% else %}
 
             <tr>
-                <td colspan="5">Sem cargas.</td>
+                <td colspan="7">Sem cargas.</td>
             </tr>
 
             {% endfor %}

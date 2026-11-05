@@ -23,7 +23,7 @@ CATEGORIAS = [
 STATUS_DESPESA = ["Rascunho", "Pendente", "Aprovada", "Reprovada", "Paga", "Cancelada"]
 STATUS_VIAGEM = ["Planejada", "Em andamento", "Finalizada", "Cancelada"]
 PERFIS = ["Administrador", "Usuário"]
-VERSAO_ESQUEMA = 6
+VERSAO_ESQUEMA = 7
 
 
 class _ConexaoPostgres:
@@ -134,7 +134,7 @@ def inicializar():
  CREATE TABLE IF NOT EXISTS anexos_despesa(id INTEGER PRIMARY KEY,despesa_id INTEGER REFERENCES despesas(id),nome TEXT,caminho TEXT,tamanho INTEGER,usuario_id INTEGER,criado_em TEXT DEFAULT CURRENT_TIMESTAMP);
  CREATE TABLE IF NOT EXISTS pagamentos(id INTEGER PRIMARY KEY,despesa_id INTEGER UNIQUE REFERENCES despesas(id),data TEXT,valor REAL,forma_pagamento TEXT,responsavel_id INTEGER,observacao TEXT);
  CREATE TABLE IF NOT EXISTS despesas_gerais(id INTEGER PRIMARY KEY,empresa_id INTEGER NOT NULL REFERENCES empresas(id),veiculo_id INTEGER REFERENCES veiculos(id),categoria TEXT NOT NULL DEFAULT 'MANUTENÇÃO',data TEXT NOT NULL,valor REAL NOT NULL,descricao TEXT,estabelecimento TEXT,forma_pagamento TEXT,criado_por INTEGER REFERENCES usuarios(id),criado_em TEXT DEFAULT CURRENT_TIMESTAMP);
- CREATE TABLE IF NOT EXISTS cargas(id INTEGER PRIMARY KEY,viagem_id INTEGER NOT NULL REFERENCES viagens(id),empresa_cliente TEXT NOT NULL,tipo TEXT NOT NULL,data TEXT NOT NULL,valor REAL NOT NULL,descricao TEXT);
+ CREATE TABLE IF NOT EXISTS cargas(id INTEGER PRIMARY KEY,viagem_id INTEGER NOT NULL REFERENCES viagens(id),empresa_cliente TEXT NOT NULL,tipo TEXT NOT NULL,data TEXT NOT NULL,valor REAL NOT NULL,valor_manifesto REAL,valor_retorno REAL DEFAULT 0,descricao TEXT);
  CREATE TABLE IF NOT EXISTS categorias_despesa(id INTEGER PRIMARY KEY,empresa_id INTEGER REFERENCES empresas(id),nome TEXT NOT NULL,ativo INTEGER DEFAULT 1,UNIQUE(empresa_id,nome));
  CREATE TABLE IF NOT EXISTS auditoria(id INTEGER PRIMARY KEY,usuario_id INTEGER,empresa_id INTEGER,acao TEXT,entidade TEXT,registro_id INTEGER,criado_em TEXT DEFAULT CURRENT_TIMESTAMP);
  CREATE TABLE IF NOT EXISTS metadados_sistema(chave TEXT PRIMARY KEY,valor TEXT NOT NULL);
@@ -183,12 +183,20 @@ def inicializar():
             "criado_por": "INTEGER",
             "criado_em": "TEXT",
         },
+        "cargas": {
+            "valor_manifesto": "REAL",
+            "valor_retorno": "REAL DEFAULT 0",
+        },
     }
     for t, cols in mig.items():
         old = {x[1] for x in c.execute(f"PRAGMA table_info({t})")}
         for n, k in cols.items():
             if n not in old:
                 c.execute(f"ALTER TABLE {t} ADD COLUMN {n} {k}")
+    # Cargas anteriores já representam o valor entregue; preserva essa leitura
+    # no novo detalhamento sem mudar nenhum total histórico.
+    c.execute("UPDATE cargas SET valor_manifesto=valor WHERE valor_manifesto IS NULL")
+    c.execute("UPDATE cargas SET valor_retorno=0 WHERE valor_retorno IS NULL")
     c.execute(
         "UPDATE empresas SET nome='ERIMAX',razao_social='Erimar Indústria e Comércio de Produtos para Saúde Ltda.',cnpj='11.463.608/0001-79' WHERE nome='ERIMAR'"
     )
@@ -253,7 +261,7 @@ def _inicializar_postgres():
  CREATE TABLE IF NOT EXISTS categorias_despesa(id BIGSERIAL PRIMARY KEY,empresa_id BIGINT REFERENCES empresas(id),nome TEXT NOT NULL,ativo INTEGER DEFAULT 1);
  CREATE TABLE IF NOT EXISTS auditoria(id BIGSERIAL PRIMARY KEY,usuario_id BIGINT,empresa_id BIGINT,acao TEXT,entidade TEXT,registro_id BIGINT,criado_em TEXT DEFAULT CURRENT_TIMESTAMP::text);
  CREATE TABLE IF NOT EXISTS metadados_sistema(chave TEXT PRIMARY KEY,valor TEXT NOT NULL);
- CREATE TABLE IF NOT EXISTS cargas(id BIGSERIAL PRIMARY KEY,viagem_id BIGINT NOT NULL REFERENCES viagens(id),empresa_cliente TEXT NOT NULL,tipo TEXT NOT NULL,data TEXT NOT NULL,valor DOUBLE PRECISION NOT NULL,descricao TEXT);
+ CREATE TABLE IF NOT EXISTS cargas(id BIGSERIAL PRIMARY KEY,viagem_id BIGINT NOT NULL REFERENCES viagens(id),empresa_cliente TEXT NOT NULL,tipo TEXT NOT NULL,data TEXT NOT NULL,valor DOUBLE PRECISION NOT NULL,valor_manifesto DOUBLE PRECISION,valor_retorno DOUBLE PRECISION DEFAULT 0,descricao TEXT);
  CREATE INDEX IF NOT EXISTS idx_viagens_empresa ON viagens(empresa_id);CREATE INDEX IF NOT EXISTS idx_despesas_viagem ON despesas(viagem_id);CREATE INDEX IF NOT EXISTS idx_despesas_gerais_empresa_data ON despesas_gerais(empresa_id,data);
  """
     c = conectar()
@@ -266,8 +274,13 @@ def _inicializar_postgres():
         "ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS vencimento_ipva TEXT",
         "ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS proxima_manutencao TEXT",
         "ALTER TABLE veiculos ADD COLUMN IF NOT EXISTS participa_operacao INTEGER DEFAULT 1",
+        "ALTER TABLE cargas ADD COLUMN IF NOT EXISTS valor_manifesto DOUBLE PRECISION",
+        "ALTER TABLE cargas ADD COLUMN IF NOT EXISTS valor_retorno DOUBLE PRECISION DEFAULT 0",
     ):
         c.execute(comando)
+    # Cargas legadas guardavam apenas o valor efetivamente entregue.
+    c.execute("UPDATE cargas SET valor_manifesto=valor WHERE valor_manifesto IS NULL")
+    c.execute("UPDATE cargas SET valor_retorno=0 WHERE valor_retorno IS NULL")
     for n, rj, cnpj in [
         ("MARK", "Comercial Mark Atacadista Ltda.", "09.315.996/0001-07"),
         (
@@ -950,8 +963,10 @@ def listar_cargas_periodo(empresa_id, inicio, fim):
 
 
 def criar_carga(**d):
+    d.setdefault("valor_manifesto", None)
+    d.setdefault("valor_retorno", 0)
     return _insert_id(
-        "INSERT INTO cargas(viagem_id,empresa_cliente,tipo,data,valor,descricao) VALUES(:viagem_id,:empresa_cliente,:tipo,:data,:valor,:descricao)",
+        "INSERT INTO cargas(viagem_id,empresa_cliente,tipo,data,valor,valor_manifesto,valor_retorno,descricao) VALUES(:viagem_id,:empresa_cliente,:tipo,:data,:valor,:valor_manifesto,:valor_retorno,:descricao)",
         d,
     )
 
