@@ -29,26 +29,25 @@ def nome_mes(mes):
 def obter_dados_relatorio_mensal(empresa_id, ano, mes):
     """Centraliza a mesma leitura usada pelo relatório mensal web.
 
-    O filtro de viagens segue a regra já publicada na tela: viagens iniciadas
-    no mês, enquanto despesas e cargas respeitam suas próprias datas de
-    lançamento. Essa separação impede divergências entre a tela e o PPTX.
+    O fechamento pertence ao mês da data final da rota. Despesas e cargas são
+    trazidas integralmente junto da viagem finalizada, ainda que lançadas em
+    outro mês; assim o relatório reproduz a conferência mensal da planilha.
     """
     inicio_mes = date(ano, mes, 1)
     fim_mes = date(ano + 1, 1, 1) if mes == 12 else date(ano, mes + 1, 1)
+    viagens_empresa = db.listar_viagens(empresa_id)
     viagens = [
         viagem
-        for viagem in db.listar_viagens(empresa_id)
-        if inicio_mes.isoformat() <= str(viagem["data_inicio"]) < fim_mes.isoformat()
+        for viagem in viagens_empresa
+        if viagem["data_fim"]
+        and inicio_mes.isoformat() <= str(viagem["data_fim"]) < fim_mes.isoformat()
     ]
-    despesas_viagem = db.listar_despesas_periodo(
-        empresa_id, inicio_mes.isoformat(), fim_mes.isoformat()
-    )
+    viagens_ids = [viagem["id"] for viagem in viagens]
+    despesas_viagem = db.listar_despesas_por_viagens(viagens_ids)
     manutencoes = db.listar_despesas_gerais_periodo(
         empresa_id, inicio_mes.isoformat(), fim_mes.isoformat()
     )
-    cargas = db.listar_cargas_periodo(
-        empresa_id, inicio_mes.isoformat(), fim_mes.isoformat()
-    )
+    cargas = db.listar_cargas_por_viagens(viagens_ids)
     despesas = list(despesas_viagem) + [
         {
             **dict(item),
@@ -81,14 +80,20 @@ def obter_dados_relatorio_mensal(empresa_id, ano, mes):
     indice_atual = ano * 12 + (mes - 1)
     indice_inicial = indice_atual - 5
     inicio_historico = date(indice_inicial // 12, indice_inicial % 12 + 1, 1)
-    despesas_historico = db.listar_despesas_periodo(
-        empresa_id, inicio_historico.isoformat(), fim_mes.isoformat()
+    viagens_historico = [
+        viagem
+        for viagem in viagens_empresa
+        if viagem["data_fim"]
+        and inicio_historico.isoformat() <= str(viagem["data_fim"]) < fim_mes.isoformat()
+    ]
+    despesas_historico = db.listar_despesas_por_viagens(
+        [viagem["id"] for viagem in viagens_historico]
     )
     manutencoes_historico = db.listar_despesas_gerais_periodo(
         empresa_id, inicio_historico.isoformat(), fim_mes.isoformat()
     )
-    cargas_historico = db.listar_cargas_periodo(
-        empresa_id, inicio_historico.isoformat(), fim_mes.isoformat()
+    cargas_historico = db.listar_cargas_por_viagens(
+        [viagem["id"] for viagem in viagens_historico]
     )
     historico = []
     for deslocamento in range(5, -1, -1):
@@ -96,18 +101,28 @@ def obter_dados_relatorio_mensal(empresa_id, ano, mes):
         ano_item = indice // 12
         mes_item = indice % 12 + 1
         prefixo = f"{ano_item:04d}-{mes_item:02d}"
+        ids_mes = {
+            viagem["id"]
+            for viagem in viagens_historico
+            if str(viagem["data_fim"]).startswith(prefixo)
+        }
         historico.append(
             {
                 "rotulo": f"{mes_item:02d}/{ano_item}",
                 "despesa": sum(
                     float(item["valor"] or 0)
-                    for item in list(despesas_historico) + list(manutencoes_historico)
+                    for item in despesas_historico
+                    if item["viagem_id"] in ids_mes
+                )
+                + sum(
+                    float(item["valor"] or 0)
+                    for item in manutencoes_historico
                     if str(item["data"]).startswith(prefixo)
                 ),
                 "receita": sum(
                     float(item["valor"] or 0)
                     for item in cargas_historico
-                    if str(item["data"]).startswith(prefixo)
+                    if item["viagem_id"] in ids_mes
                 ),
             }
         )

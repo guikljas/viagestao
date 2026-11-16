@@ -657,9 +657,19 @@ def gerar_relatorio(empresa_id: int = None, caminho_saida: str = None) -> str:
     ]
     _cabecalho(ws6, colunas6)
     linha = 2
-    meses_viagens = sorted({v["data_inicio"][:7] for v in viagens})
+    meses_viagens = sorted(
+        {
+            v["data_fim"][:7]
+            for v in viagens
+            if v["data_fim"]
+        }
+    )
     for mes in meses_viagens:
-        viagens_mes = [v for v in viagens if v["data_inicio"].startswith(mes)]
+        viagens_mes = [
+            v
+            for v in viagens
+            if v["data_fim"] and v["data_fim"].startswith(mes)
+        ]
         for empresa_frota in sorted({v["empresa_nome"] for v in viagens_mes}):
             viagens_com_despesas = [
                 (v, despesas_por_viagem[v["id"]])
